@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>CABO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Lilita+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='14' y='4' width='72' height='92' rx='12' fill='%23ff4fa3' stroke='%231d0f3f' stroke-width='6'/><circle cx='50' cy='50' r='18' fill='%23ffd23f' stroke='%231d0f3f' stroke-width='5'/></svg>">
+</head>
+<body>
+<div id="app">
+
+  <!-- HOME -->
+  <section id="home" class="screen hidden">
+    <span class="floaty" style="left:8%;top:14%">♠</span>
+    <span class="floaty" style="right:10%;top:22%;animation-delay:-3s;color:#ff3b5c">♥</span>
+    <span class="floaty" style="left:14%;bottom:12%;animation-delay:-5s;color:#ff3b5c">♦</span>
+    <span class="floaty" style="right:16%;bottom:16%;animation-delay:-1s">♣</span>
+    <div class="panel home-card">
+      <div class="logo"><span>C</span><span>A</span><span>B</span><span>O</span></div>
+      <p class="tag">Peek once. Trust no one. Shout CABO.</p>
+      <div class="stack">
+        <input id="nameIn" class="field" maxlength="14" placeholder="Your name" autocomplete="off">
+        <button class="btn pink big" data-do="create">Host a new game</button>
+        <div class="or">or join a friend</div>
+        <div class="joinrow">
+          <input id="codeIn" class="field" maxlength="4" placeholder="CODE" autocomplete="off">
+          <button class="btn cyan" data-do="join">Join →</button>
+        </div>
+        <button class="btn white small" data-do="demo" style="justify-self:center;margin-top:6px">How to play</button>
+      </div>
+      <div class="laptop-note">Best played on a laptop or desktop screen</div>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="lobby" class="screen hidden">
+    <div class="panel lobby-card" id="lobbyCard"></div>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="screen hidden">
+    <div class="topbar">
+      <div class="minilogo">CABO</div>
+      <span class="chip" id="roomChip"></span>
+      <span class="chip" id="modeChip"></span>
+      <span class="spacer"></span>
+      <button class="iconbtn ib-sound" data-do="mute" id="muteBtn" title="Sound on/off">
+        <svg viewBox="0 0 24 24"><path class="fillink" d="M4 9h3l5-4v14l-5-4H4z"/><path class="wave w1" d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path class="wave w2" d="M18 7a7 7 0 0 1 0 10"/><path class="xmark" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+      </button>
+      <button class="iconbtn ib-book" data-do="demo" title="How to play">
+        <svg viewBox="0 0 24 24"><path d="M3 5.5C5.5 4 8.5 4 12 6v14c-3.5-2-6.5-2-9-.5z"/><path d="M21 5.5C18.5 4 15.5 4 12 6v14c3.5-2 6.5-2 9-.5z"/><path class="page" d="M12 6c2.5-1.5 5-1.6 7.5-.6v12.6c-2.5-1-5-.9-7.5.6z"/></svg>
+      </button>
+      <button class="iconbtn ib-door" data-do="leave" title="Leave game">
+        <svg viewBox="0 0 24 24"><path d="M4 3h9v18H4z"/><path class="door fillink" d="M4 3l7 1.5v15L4 21z"/><path class="arr" d="M15 12h6M18.5 9.5L21 12l-2.5 2.5"/></svg>
+      </button>
+    </div>
+    <!-- Plus-shaped table: across on top, neighbours left/right, you at the bottom.
+         With 5-6 players two more seats sit in the top corners. -->
+    <div class="table3">
+      <div class="spot tl" id="spotTL"></div>
+      <div class="spot top" id="spotTop"></div>
+      <div class="spot tr" id="spotTR"></div>
+      <div class="spot left" id="spotLeft"></div>
+      <div class="center">
+        <div class="piles">
+          <div class="pile draw" id="drawPile"></div>
+          <div class="pile discard" id="discardPile"></div>
+        </div>
+        <div id="actions"></div>
+      </div>
+      <div class="spot right" id="spotRight"></div>
+      <div class="spot me" id="spotMe"></div>
+    </div>
+    <!-- Card-powers cheat sheet; open/closed state is remembered -->
+    <aside id="cheat">
+      <div class="cheat-hint">Card powers</div>
+      <button class="cheat-tab" data-do="cheat" title="Card powers"><span class="ct-lb">RULES</span></button>
+      <div class="cheat-panel"><div class="cheat-h">Card powers</div><div id="cheatBody"></div></div>
+    </aside>
+  </section>
+</div>
+
+<div id="modal"></div>
+<div id="toasts"></div>
+<div id="conn" class="hidden"><span class="chip off">Reconnecting…</span></div>
+<canvas id="fx"></canvas>
+<script src="app.js"></script>
+<script src="demo.js"></script>
+</body>
+</html>

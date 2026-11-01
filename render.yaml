@@ -1,0 +1,9 @@
+# Render blueprint: one free web service running the CABO server (HTTP + WebSockets on $PORT).
+services:
+  - type: web
+    name: cabo
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /

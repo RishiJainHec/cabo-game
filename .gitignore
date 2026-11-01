@@ -1,0 +1,4 @@
+node_modules
+.claude
+.railwayignore
+.DS_Store
