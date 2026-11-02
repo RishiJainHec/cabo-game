@@ -482,6 +482,16 @@ class Game {
     }
   }
 
+  // Tapping the card you're peeking at closes it early and the game moves on. With a Queen it
+  // also means "keep the cards as they are".
+  act_seen(pl) {
+    if (pl.id === this.activeId && this.turn && this.turn.step === 'queen') this.act_queen(pl, { swap: false });
+    if (pl.id !== this.activeId || this.status !== 'RESOLVING') return { error: 'Not allowed right now' };
+    const now = Date.now();
+    for (const k of this.peeks[pl.id] || []) k.until = Math.min(k.until, now);
+    this.advance();
+  }
+
   swapSlots(a, b) {
     const ca = a.pl.slots[a.idx].card;
     const cb = b.pl.slots[b.idx].card;
@@ -510,10 +520,11 @@ class Game {
     if (pl.locked) return { error: 'Your cards are locked' };
     const current = ph && m.phaseId === ph.id;
     if (!current || !ph.open) {
-      // Fastest Finger: a click already in flight when someone else won the race (the phase may
-      // still be on screen for its short pause, or already gone).
+      // Fastest Finger: someone else won the race. Tapping a card while the result is still on
+      // screen costs a penalty card (once), as does a click that was already in flight when the
+      // phase ended.
       const lc = this.lastClosed;
-      if (lc && m.phaseId === lc.id && now - lc.at <= this.graceMs && pl.id !== lc.winnerId && !lc.penalized.has(pl.id)) {
+      if (lc && m.phaseId === lc.id && (current || now - lc.at <= this.graceMs) && pl.id !== lc.winnerId && !lc.penalized.has(pl.id)) {
         const t = this.p(m.owner);
         const ok = t && !t.locked && Number.isInteger(m.idx) && m.idx >= 0 && m.idx < t.slots.length &&
           (t.slots[m.idx] || (m.owner === lc.owner && m.idx === lc.idx));

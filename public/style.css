@@ -956,3 +956,20 @@ body.powering .seat.active .seat-head { border-color: var(--violet); }
 .st-bubble::before { content: ''; position: absolute; left: -16px; top: 24px; width: 22px; height: 22px; background: var(--cream); border-left: 3px solid var(--ink); border-bottom: 3px solid var(--ink); rotate: 45deg; }
 .st-bubble.pop { animation: stPop .45s cubic-bezier(.3, 1.6, .5, 1) both; }
 @media (prefers-reduced-motion: reduce) { .st-stage * { animation: none !important; } }
+
+/* ---------- the middle box keeps one size and shape all game (laptop / desktop) ----------
+   It's as wide as the piles plus room for a caption, and the action strip under the piles always
+   reserves the height of its tallest content (a big button plus a caption), even when empty. */
+@media (min-width: 761px) {
+  .table3 .center { --act-h: 88px; width: max(300px, calc(var(--bw) * 2 + 140px)); min-width: 0; }
+  .table3 #actions, .table3 #actions:empty { display: flex; flex-direction: column; justify-content: center; height: var(--act-h); min-height: 0; }
+  .table3 #actions .row { flex-wrap: nowrap; }
+  .table3 #actions .cap, .table3 #actions .powercall { max-width: 100%; white-space: normal; line-height: 1.2; }
+  /* MATCH! / POWER stamps land on the caption strip, never over the cards */
+  .table3 .center .splash { top: auto; bottom: calc(16px + var(--act-h) / 2); translate: -50% 50%; font-size: clamp(22px, 2.6vw, 32px); padding: 2px 16px; }
+}
+@media (min-width: 761px) and (max-height: 760px) {
+  .table3 .center { --act-h: 70px; }
+  .table3 .center .splash { bottom: calc(8px + var(--act-h) / 2); }
+}
+@keyframes splash { 0% { scale: 1.7; rotate: -10deg; opacity: 0; } 18% { scale: 1; rotate: -4deg; opacity: 1; } 72% { scale: 1; opacity: 1; } 100% { scale: .85; rotate: -4deg; opacity: 0; } }

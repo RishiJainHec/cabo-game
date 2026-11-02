@@ -213,6 +213,38 @@ const tests = {
     assert.ok(g.integrity());
     g.destroy();
   },
+  async 'fastest finger: tapping a card while "X got it" is on screen costs one penalty'() {
+    const g = rig('FF', [['AS', '7C', '3S', '4S'], ['5S', '6S', 'AC', '8S'], ['9S', '10S', 'AD', 'QS'], ['AH', '2H', '3H', '4H']], { deckTop: ['5D'], pauseMs: 1500 });
+    ok(g.handle('a', { a: 'draw' }));
+    ok(g.handle('a', { a: 'swap', ...tgt(g, 'a', 0) }));
+    const ph = g.phase.id;
+    ok(match(g, 'b', 'b', 2));
+    await sleep(400); // well past the in-flight grace, result still showing
+    assert.strictEqual(g.phase && g.phase.id, ph);
+    ok(g.handle('d', { a: 'match', phaseId: ph, ...tgt(g, 'c', 0), id: 'y1' }));
+    assert.strictEqual(g.p('d').slots.length, 5, 'late tap -> penalty');
+    assert.ok(g.handle('d', { a: 'match', phaseId: ph, ...tgt(g, 'c', 1), id: 'y2' }).error);
+    assert.strictEqual(g.p('d').slots.length, 5, 'only one');
+    assert.ok(g.handle('b', { a: 'match', phaseId: ph, ...tgt(g, 'c', 0), id: 'y3' }).error, 'winner is never penalised');
+    assert.ok(g.integrity());
+    g.destroy();
+  },
+  'tapping a peeked card closes it and the turn moves on (7 and Queen)'() {
+    for (const rank of ['7D', 'QD']) {
+      const g = rig('FF', G4, { deckTop: [rank] });
+      ok(g.handle('a', { a: 'draw' }));
+      closeWindow(g);
+      g.pauseMs = 3000;
+      ok(g.handle('a', { a: 'target', ...(rank === '7D' ? tgt(g, 'a', 1) : tgt(g, 'b', 1)) }));
+      assert.ok(g.view('a').peeks.length, 'card is showing');
+      assert.ok(g.handle('b', { a: 'seen' }).error, 'only the peeker can close it');
+      ok(g.handle('a', { a: 'seen' }));
+      assert.strictEqual(g.activeId, 'b', rank + ': next turn right away');
+      assert.strictEqual(g.view('a').peeks.filter((k) => k.until > Date.now()).length, 0, 'card closed');
+      assert.ok(g.integrity());
+      g.destroy();
+    }
+  },
   'duplicate action id has no second effect'() {
     const g = rig('MD', G4, { deckTop: ['5D'] });
     ok(g.handle('a', { a: 'draw' }));

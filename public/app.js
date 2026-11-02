@@ -98,8 +98,10 @@ function interaction() {
   const give = V.phase && V.phase.gives.find((g) => g.attackerId === V.you);
   if (give) return { kind: 'give', ok: own };
   if (V.phase) {
-    if (me.locked || !V.phase.open || snow() >= V.phase.deadline) return null;
-    if (V.mode === 'FF' && V.phase.matched) return null;
+    if (me.locked) return null;
+    // Fastest Finger: once someone has won the race, a late tap still goes through and costs a penalty
+    if (V.mode === 'FF' && V.phase.matched) return V.phase.winnerId === V.you ? null : { kind: 'match', ok: open };
+    if (!V.phase.open || snow() >= V.phase.deadline) return null;
     return { kind: 'match', ok: open };
   }
   if (!ownTurn()) return null;
@@ -613,7 +615,7 @@ function renderActions() {
     else if (!me.ready) h = `${btn('Ready', 'viewReady', 'lime big')}${cap('memorise them')}`;
     else h = cap('Waiting for the others…');
   } else if (v.status === 'GAME_OVER') {
-    h = btn('Scores', 'results', 'white') + (soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink'));
+    h = `<div class="row">${btn('Scores', 'results', 'white')}${soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink')}</div>`;
   } else if (v.phase) {
     const give = v.phase.gives.find((g) => g.attackerId === v.you);
     if (give) h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
@@ -629,6 +631,8 @@ function renderActions() {
       h = local.queenSwap
         ? `${cap('Pick one of yours')}${btn('←', 'queenBack', 'white small')}`
         : `<div class="row">${btn('Swap', 'queenSwap', 'lime big')}${btn('Keep', 'queenKeep', 'white big')}</div>`;
+    } else if (v.status === 'RESOLVING' && visiblePeeks().length) {
+      h = cap('Got it? Tap the card to close it');
     }
   } else if (t.power && v.status === 'AWAITING_ACTION') {
     // someone else is using a power: say who and what, in a few words
@@ -818,6 +822,12 @@ function clickSlot(el) {
   const idx = Number(el.dataset.idx);
   const p = player(owner);
   const s = p && p.slots[idx];
+  // tapping the card you're peeking at closes it and the game moves on
+  if (s && ownTurn() && V.turn && (V.status === 'RESOLVING' || (V.turn.step === 'queen' && !local.queenSwap)) && at(visiblePeeks(), owner, idx, s)) {
+    pulse(el, 'tapped');
+    act('seen');
+    return;
+  }
   const it = interaction();
   if (!it || !s || s.empty || !it.ok(owner, idx)) { pulse(el, 'nope'); return; }
   const tg = { owner, idx, ver: s.ver };

@@ -966,6 +966,23 @@ body.powering .seat.active .seat-head { border-color: var(--violet); }
 .st-bubble.pop { animation: stPop .45s cubic-bezier(.3, 1.6, .5, 1) both; }
 @media (prefers-reduced-motion: reduce) { .st-stage * { animation: none !important; } }
 
+/* ---------- the middle box keeps one size and shape all game (laptop / desktop) ----------
+   It's as wide as the piles plus room for a caption, and the action strip under the piles always
+   reserves the height of its tallest content (a big button plus a caption), even when empty. */
+@media (min-width: 761px) {
+  .table3 .center { --act-h: 88px; width: max(300px, calc(var(--bw) * 2 + 140px)); min-width: 0; }
+  .table3 #actions, .table3 #actions:empty { display: flex; flex-direction: column; justify-content: center; height: var(--act-h); min-height: 0; }
+  .table3 #actions .row { flex-wrap: nowrap; }
+  .table3 #actions .cap, .table3 #actions .powercall { max-width: 100%; white-space: normal; line-height: 1.2; }
+  /* MATCH! / POWER stamps land on the caption strip, never over the cards */
+  .table3 .center .splash { top: auto; bottom: calc(16px + var(--act-h) / 2); translate: -50% 50%; font-size: clamp(22px, 2.6vw, 32px); padding: 2px 16px; }
+}
+@media (min-width: 761px) and (max-height: 760px) {
+  .table3 .center { --act-h: 70px; }
+  .table3 .center .splash { bottom: calc(8px + var(--act-h) / 2); }
+}
+@keyframes splash { 0% { scale: 1.7; rotate: -10deg; opacity: 0; } 18% { scale: 1; rotate: -4deg; opacity: 1; } 72% { scale: 1; opacity: 1; } 100% { scale: .85; rotate: -4deg; opacity: 0; } }
+
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='14' y='4' width='72' height='92' rx='12' fill='%23ff4fa3' stroke='%231d0f3f' stroke-width='6'/><circle cx='50' cy='50' r='18' fill='%23ffd23f' stroke='%231d0f3f' stroke-width='5'/></svg>">
 </head>
@@ -1572,6 +1589,16 @@ class Game {
     }
   }
 
+  // Tapping the card you're peeking at closes it early and the game moves on. With a Queen it
+  // also means "keep the cards as they are".
+  act_seen(pl) {
+    if (pl.id === this.activeId && this.turn && this.turn.step === 'queen') this.act_queen(pl, { swap: false });
+    if (pl.id !== this.activeId || this.status !== 'RESOLVING') return { error: 'Not allowed right now' };
+    const now = Date.now();
+    for (const k of this.peeks[pl.id] || []) k.until = Math.min(k.until, now);
+    this.advance();
+  }
+
   swapSlots(a, b) {
     const ca = a.pl.slots[a.idx].card;
     const cb = b.pl.slots[b.idx].card;
@@ -1600,10 +1627,11 @@ class Game {
     if (pl.locked) return { error: 'Your cards are locked' };
     const current = ph && m.phaseId === ph.id;
     if (!current || !ph.open) {
-      // Fastest Finger: a click already in flight when someone else won the race (the phase may
-      // still be on screen for its short pause, or already gone).
+      // Fastest Finger: someone else won the race. Tapping a card while the result is still on
+      // screen costs a penalty card (once), as does a click that was already in flight when the
+      // phase ended.
       const lc = this.lastClosed;
-      if (lc && m.phaseId === lc.id && now - lc.at <= this.graceMs && pl.id !== lc.winnerId && !lc.penalized.has(pl.id)) {
+      if (lc && m.phaseId === lc.id && (current || now - lc.at <= this.graceMs) && pl.id !== lc.winnerId && !lc.penalized.has(pl.id)) {
         const t = this.p(m.owner);
         const ok = t && !t.locked && Number.isInteger(m.idx) && m.idx >= 0 && m.idx < t.slots.length &&
           (t.slots[m.idx] || (m.owner === lc.owner && m.idx === lc.idx));
@@ -2347,8 +2375,10 @@ function interaction() {
   const give = V.phase && V.phase.gives.find((g) => g.attackerId === V.you);
   if (give) return { kind: 'give', ok: own };
   if (V.phase) {
-    if (me.locked || !V.phase.open || snow() >= V.phase.deadline) return null;
-    if (V.mode === 'FF' && V.phase.matched) return null;
+    if (me.locked) return null;
+    // Fastest Finger: once someone has won the race, a late tap still goes through and costs a penalty
+    if (V.mode === 'FF' && V.phase.matched) return V.phase.winnerId === V.you ? null : { kind: 'match', ok: open };
+    if (!V.phase.open || snow() >= V.phase.deadline) return null;
     return { kind: 'match', ok: open };
   }
   if (!ownTurn()) return null;
@@ -2862,7 +2892,7 @@ function renderActions() {
     else if (!me.ready) h = `${btn('Ready', 'viewReady', 'lime big')}${cap('memorise them')}`;
     else h = cap('Waiting for the others…');
   } else if (v.status === 'GAME_OVER') {
-    h = btn('Scores', 'results', 'white') + (soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink'));
+    h = `<div class="row">${btn('Scores', 'results', 'white')}${soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink')}</div>`;
   } else if (v.phase) {
     const give = v.phase.gives.find((g) => g.attackerId === v.you);
     if (give) h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
@@ -2878,6 +2908,8 @@ function renderActions() {
       h = local.queenSwap
         ? `${cap('Pick one of yours')}${btn('←', 'queenBack', 'white small')}`
         : `<div class="row">${btn('Swap', 'queenSwap', 'lime big')}${btn('Keep', 'queenKeep', 'white big')}</div>`;
+    } else if (v.status === 'RESOLVING' && visiblePeeks().length) {
+      h = cap('Got it? Tap the card to close it');
     }
   } else if (t.power && v.status === 'AWAITING_ACTION') {
     // someone else is using a power: say who and what, in a few words
@@ -3067,6 +3099,12 @@ function clickSlot(el) {
   const idx = Number(el.dataset.idx);
   const p = player(owner);
   const s = p && p.slots[idx];
+  // tapping the card you're peeking at closes it and the game moves on
+  if (s && ownTurn() && V.turn && (V.status === 'RESOLVING' || (V.turn.step === 'queen' && !local.queenSwap)) && at(visiblePeeks(), owner, idx, s)) {
+    pulse(el, 'tapped');
+    act('seen');
+    return;
+  }
   const it = interaction();
   if (!it || !s || s.empty || !it.ok(owner, idx)) { pulse(el, 'nope'); return; }
   const tg = { owner, idx, ver: s.ver };
