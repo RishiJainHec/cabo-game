@@ -698,8 +698,34 @@ body.powering .slot.elig::after { content: ''; position: absolute; inset: -6px; 
   .table3 { grid-template-columns: 1fr minmax(260px, 420px) 1fr; }
 }
 
-/* offline single-file build: solo vs bots */
-body.offline .or, body.offline .joinrow, body.offline [data-do=copy] { display: none !important; }
+/* ---------- home steps: pick (solo / host / join), solo setup, join ---------- */
+.hm { display: none; gap: 12px; }
+.home-card[data-step=pick] .hm-pick, .home-card[data-step=solo] .hm-solo, .home-card[data-step=join] .hm-join { display: grid; animation: popin .3s cubic-bezier(.3, 1.8, .5, 1) both; }
+.choice {
+  display: grid; gap: 2px; text-align: left; padding: 12px 18px; border: 3px solid var(--ink); border-radius: 18px;
+  box-shadow: 4px 4px 0 var(--ink); transition: transform .2s cubic-bezier(.3, 1.8, .5, 1), box-shadow .15s; position: relative;
+}
+.choice b { font-family: 'Lilita One'; font-size: 24px; font-weight: 400; letter-spacing: .5px; }
+.choice span { font-size: 14px; font-weight: 600; opacity: .75; }
+.choice::after { content: '→'; position: absolute; right: 18px; top: 50%; translate: 0 -50%; font-size: 24px; font-weight: 900; transition: translate .2s; }
+.choice:hover { transform: translateY(-2px) rotate(-1deg); box-shadow: 5px 7px 0 var(--ink); }
+.choice:hover::after { translate: 5px -50%; }
+.choice:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+.choice.pink { background: var(--pink); } .choice.cyan { background: var(--cyan); } .choice.lime { background: var(--lime); }
+.hm-head { display: flex; align-items: center; gap: 10px; }
+.hm-head h3 { font-family: 'Lilita One'; font-weight: 400; font-size: 26px; }
+.hm-back {
+  width: 38px; height: 38px; border: 3px solid var(--ink); border-radius: 12px; background: var(--cream);
+  box-shadow: 2px 2px 0 var(--ink); font-size: 20px; font-weight: 900; line-height: 1; transition: transform .15s;
+}
+.hm-back:hover { transform: translateX(-3px); }
+.pick-lbl { text-align: left; font-weight: 700; font-size: 14px; color: var(--muted); margin-bottom: -6px; }
+.opt-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.opt-row .lvl { flex: 1; padding: 8px 10px; }
+.opt-hint { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* offline single-file build: solo vs bots only */
+body.offline .hm-back, body.offline [data-do=copy] { display: none !important; }
 
 /* small text markers that replace emoji */
 .bot-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 1px; padding: 0 6px; border-radius: 99px; background: var(--ink); color: var(--cream); }
@@ -957,11 +983,32 @@ body.powering .seat.active .seat-head { border-color: var(--violet); }
       <p class="tag">Peek once. Trust no one. Shout CABO.</p>
       <div class="stack">
         <input id="nameIn" class="field" maxlength="14" placeholder="Your name" autocomplete="off">
-        <button class="btn pink big" data-do="create">Host a new game</button>
-        <div class="or">or join a friend</div>
-        <div class="joinrow">
-          <input id="codeIn" class="field" maxlength="4" placeholder="CODE" autocomplete="off">
-          <button class="btn cyan" data-do="join">Join →</button>
+        <!-- step 1: what do you want to do? -->
+        <div class="hm hm-pick">
+          <button class="choice pink" data-do="goSolo"><b>Play solo</b><span>You vs bots, starts right away</span></button>
+          <button class="choice cyan" data-do="create"><b>Host a game</b><span>Get a code to share with friends</span></button>
+          <button class="choice lime" data-do="goJoin"><b>Join a game</b><span>Got a code? Hop in</span></button>
+        </div>
+        <!-- solo: pick the table and go -->
+        <div class="hm hm-solo">
+          <div class="hm-head"><button class="hm-back" data-do="homeBack" title="Back">←</button><h3>Play solo</h3></div>
+          <div class="pick-lbl">Players at the table</div>
+          <div class="opt-row" id="soloN"></div>
+          <div class="pick-lbl">Bot level</div>
+          <div class="opt-row" id="soloLvl"></div>
+          <div class="pick-lbl">Game type</div>
+          <div class="opt-row" id="soloMode"></div>
+          <p class="opt-hint" id="soloHint"></p>
+          <button class="btn pink big" data-do="solo">Let's play!</button>
+        </div>
+        <!-- join: type the code -->
+        <div class="hm hm-join">
+          <div class="hm-head"><button class="hm-back" data-do="homeBack" title="Back">←</button><h3>Join a game</h3></div>
+          <div class="joinrow">
+            <input id="codeIn" class="field" maxlength="4" placeholder="CODE" autocomplete="off">
+            <button class="btn cyan" data-do="join">Join →</button>
+          </div>
+          <p class="opt-hint">Ask the host for the 4-letter room code</p>
         </div>
         <button class="btn white small" data-do="demo" style="justify-self:center;margin-top:6px">How to play</button>
       </div>
@@ -1983,6 +2030,12 @@ class Room {
   }
   event(ev) { for (const p of this.players) this.send(p, { type: 'event', ev }); }
 
+  addBot() {
+    const names = ['Botzilla', 'Robo Rita', 'Chip', 'Bleep', 'Sprocket', 'Gizmo'];
+    const used = new Set(this.players.map((x) => x.name));
+    this.players.push({ id: newId(), token: null, name: names.find((n) => !used.has(n)) || 'Bot', ready: true, isBot: true });
+  }
+
   start() {
     this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode);
     this.game.onUpdate = () => this.broadcast();
@@ -2046,6 +2099,17 @@ const handlers = {
     room.hostId = p.id;
     attach(ws, room, p);
   },
+  // Solo: a private room with bots, set up and started in one go.
+  solo(ws, m) {
+    handlers.create(ws, m);
+    const room = ws.ctx && ws.ctx.room;
+    if (!room || room.players.length !== 1) return;
+    const n = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, Math.floor(Number(m.players)) || 4));
+    while (room.players.length < n) room.addBot();
+    room.mode = m.mode === 'MD' ? 'MD' : 'FF';
+    room.level = LEVELS.includes(m.level) ? m.level : 'medium';
+    room.start();
+  },
   join(ws, m) {
     const room = rooms.get(str(m.code).toUpperCase().trim());
     if (!room) return err(ws, 'Room not found — check the code');
@@ -2080,9 +2144,7 @@ const roomHandlers = {
   addBot(room, p) {
     if (room.game || p.id !== room.hostId) return 'Only the host can add bots';
     if (room.players.length >= MAX_PLAYERS) return 'Room is full';
-    const names = ['Botzilla', 'Robo Rita', 'Chip', 'Bleep', 'Sprocket', 'Gizmo'];
-    const used = new Set(room.players.map((x) => x.name));
-    room.players.push({ id: newId(), token: null, name: names.find((n) => !used.has(n)) || 'Bot', ready: true, isBot: true });
+    room.addBot();
     room.broadcast();
   },
   kick(room, p, m) {
@@ -2233,8 +2295,7 @@ function onMsg(m) {
   if (m.type === 'joined') {
     save({ code: m.code, token: m.token, name: m.name });
     setUrl('?room=' + m.code);
-    // offline single-file build: it's always you vs 3 bots
-    if (window.CABO_OFFLINE) for (let i = 0; i < 3; i++) send({ type: 'addBot' });
+    local.homeStep = window.CABO_OFFLINE ? 'solo' : 'pick'; // where Leave takes you back to
   } else if (m.type === 'gone') {
     save(null); V = null; show(); toast('That game is no longer available.', 'bad');
   } else if (m.type === 'kicked') {
@@ -2329,8 +2390,32 @@ function resetTable() {
 function renderHome() {
   const nm = $('#nameIn');
   if (!nm.value) nm.value = localStorage.getItem('cabo.name') || '';
+  // an invite link (?room=CODE) opens straight on the join step with the code filled in
   const code = new URLSearchParams(location.search).get('room');
-  if (code && !$('#codeIn').value) $('#codeIn').value = code.toUpperCase();
+  if (code && !$('#codeIn').value) { $('#codeIn').value = code.toUpperCase(); local.homeStep ||= 'join'; }
+  homeStep(local.homeStep || 'pick');
+}
+
+// The home card is one of three steps: pick (solo / host / join), solo setup, or join.
+function homeStep(s) {
+  local.homeStep = s;
+  $('.home-card').dataset.step = s;
+  if (s === 'solo') renderSolo();
+}
+
+// Solo picks are remembered, so a returning player just taps "Let's play!".
+function soloPrefs() {
+  const d = { players: 4, level: 'medium', mode: 'FF' };
+  try { return { ...d, ...JSON.parse(localStorage.getItem('cabo.solo') || '{}') }; } catch { return d; }
+}
+function renderSolo() {
+  const s = soloPrefs();
+  const opt = (k, v, label) => `<button class="lvl ${s[k] === v ? 'on' : ''}" data-do="soloSet" data-k="${k}" data-v="${v}">${label}</button>`;
+  setHTML($('#soloN'), [2, 3, 4, 5, 6].map((n) => opt('players', n, n)).join(''));
+  setHTML($('#soloLvl'), [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].map(([k, l]) => opt('level', k, l)).join(''));
+  setHTML($('#soloMode'), opt('mode', 'FF', 'Fastest Finger') + opt('mode', 'MD', 'Multiple Discard'));
+  const bots = s.players - 1;
+  $('#soloHint').textContent = `You + ${bots} bot${bots > 1 ? 's' : ''} · ${s.mode === 'FF' ? 'only the first match counts' : 'match as many as you can in 5 s'}`;
 }
 
 // Home screen story: the whole game in five tiny beats, told by a friendly card with a face on the
@@ -2777,7 +2862,7 @@ function renderActions() {
     else if (!me.ready) h = `${btn('Ready', 'viewReady', 'lime big')}${cap('memorise them')}`;
     else h = cap('Waiting for the others…');
   } else if (v.status === 'GAME_OVER') {
-    h = btn('Scores', 'results', 'white') + btn('Back to lobby', 'rematch', 'pink');
+    h = btn('Scores', 'results', 'white') + (soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink'));
   } else if (v.phase) {
     const give = v.phase.gives.find((g) => g.attackerId === v.you);
     if (give) h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
@@ -2814,6 +2899,9 @@ function renderCheat() {
 }
 
 // ---------------- results ----------------
+// You and only bots: the next round can start in one tap, same table and settings.
+const soloTable = () => V.hostId === V.you && V.players.every((p) => p.id === V.you || p.isBot);
+
 function showResults() {
   if (!V || !V.results) return;
   const r = V.results;
@@ -2834,7 +2922,7 @@ function showResults() {
   }).join('');
   const title = r.tie ? `It's a tie!` : r.winners[0] === V.you ? 'You win!' : `${esc(nameOf(r.winners[0]))} wins!`;
   openModal('results', `<h2>${title}</h2>
-    <div class="lobby-actions res-actions">${btn('Back to lobby', 'rematch', 'pink')}
+    <div class="lobby-actions res-actions">${soloTable() ? btn('Play again', 'again', 'pink') + btn('Change setup', 'rematch', 'white') : btn('Back to lobby', 'rematch', 'pink')}
     ${btn('View table', 'closeModal', 'white')}${btn('Leave', 'leave', 'white')}</div>${rows}`);
   // Confetti is saved for this moment only: a big burst as the winner is announced, plus one
   // from each winner's seat on the table behind.
@@ -2883,6 +2971,18 @@ document.addEventListener('click', (e) => {
   const nm = () => { const n = $('#nameIn').value.trim() || 'Player'; localStorage.setItem('cabo.name', n); return n; };
   switch (d) {
     case 'create': send({ type: 'create', name: nm() }); break;
+    case 'goSolo': homeStep('solo'); break;
+    case 'goJoin': homeStep('join'); $('#codeIn').focus(); break;
+    case 'homeBack': homeStep('pick'); break;
+    case 'soloSet': {
+      const s = soloPrefs();
+      s[b.dataset.k] = b.dataset.k === 'players' ? +b.dataset.v : b.dataset.v;
+      localStorage.setItem('cabo.solo', JSON.stringify(s));
+      renderSolo();
+      break;
+    }
+    case 'solo': send({ type: 'solo', name: nm(), ...soloPrefs() }); break;
+    case 'again': closeModal(); send({ type: 'rematch' }); send({ type: 'start' }); break;
     case 'join': {
       const code = $('#codeIn').value.trim().toUpperCase();
       if (code.length !== 4) return toast('Enter the 4-letter room code', 'bad');
@@ -3465,7 +3565,7 @@ function setUrl(u) { try { history.replaceState(null, '', u); } catch {} }
 if (window.CABO_OFFLINE) {
   // offline single-file build: no joining or invite links, just you vs bots
   document.body.classList.add('offline');
-  $('[data-do=create]').textContent = 'Play vs 3 bots';
+  local.homeStep = 'solo';
   save(null);
 }
 homeStory();

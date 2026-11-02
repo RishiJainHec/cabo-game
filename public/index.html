@@ -23,11 +23,32 @@
       <p class="tag">Peek once. Trust no one. Shout CABO.</p>
       <div class="stack">
         <input id="nameIn" class="field" maxlength="14" placeholder="Your name" autocomplete="off">
-        <button class="btn pink big" data-do="create">Host a new game</button>
-        <div class="or">or join a friend</div>
-        <div class="joinrow">
-          <input id="codeIn" class="field" maxlength="4" placeholder="CODE" autocomplete="off">
-          <button class="btn cyan" data-do="join">Join →</button>
+        <!-- step 1: what do you want to do? -->
+        <div class="hm hm-pick">
+          <button class="choice pink" data-do="goSolo"><b>Play solo</b><span>You vs bots, starts right away</span></button>
+          <button class="choice cyan" data-do="create"><b>Host a game</b><span>Get a code to share with friends</span></button>
+          <button class="choice lime" data-do="goJoin"><b>Join a game</b><span>Got a code? Hop in</span></button>
+        </div>
+        <!-- solo: pick the table and go -->
+        <div class="hm hm-solo">
+          <div class="hm-head"><button class="hm-back" data-do="homeBack" title="Back">←</button><h3>Play solo</h3></div>
+          <div class="pick-lbl">Players at the table</div>
+          <div class="opt-row" id="soloN"></div>
+          <div class="pick-lbl">Bot level</div>
+          <div class="opt-row" id="soloLvl"></div>
+          <div class="pick-lbl">Game type</div>
+          <div class="opt-row" id="soloMode"></div>
+          <p class="opt-hint" id="soloHint"></p>
+          <button class="btn pink big" data-do="solo">Let's play!</button>
+        </div>
+        <!-- join: type the code -->
+        <div class="hm hm-join">
+          <div class="hm-head"><button class="hm-back" data-do="homeBack" title="Back">←</button><h3>Join a game</h3></div>
+          <div class="joinrow">
+            <input id="codeIn" class="field" maxlength="4" placeholder="CODE" autocomplete="off">
+            <button class="btn cyan" data-do="join">Join →</button>
+          </div>
+          <p class="opt-hint">Ask the host for the 4-letter room code</p>
         </div>
         <button class="btn white small" data-do="demo" style="justify-self:center;margin-top:6px">How to play</button>
       </div>

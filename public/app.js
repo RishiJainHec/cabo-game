@@ -46,8 +46,7 @@ function onMsg(m) {
   if (m.type === 'joined') {
     save({ code: m.code, token: m.token, name: m.name });
     setUrl('?room=' + m.code);
-    // offline single-file build: it's always you vs 3 bots
-    if (window.CABO_OFFLINE) for (let i = 0; i < 3; i++) send({ type: 'addBot' });
+    local.homeStep = window.CABO_OFFLINE ? 'solo' : 'pick'; // where Leave takes you back to
   } else if (m.type === 'gone') {
     save(null); V = null; show(); toast('That game is no longer available.', 'bad');
   } else if (m.type === 'kicked') {
@@ -142,8 +141,32 @@ function resetTable() {
 function renderHome() {
   const nm = $('#nameIn');
   if (!nm.value) nm.value = localStorage.getItem('cabo.name') || '';
+  // an invite link (?room=CODE) opens straight on the join step with the code filled in
   const code = new URLSearchParams(location.search).get('room');
-  if (code && !$('#codeIn').value) $('#codeIn').value = code.toUpperCase();
+  if (code && !$('#codeIn').value) { $('#codeIn').value = code.toUpperCase(); local.homeStep ||= 'join'; }
+  homeStep(local.homeStep || 'pick');
+}
+
+// The home card is one of three steps: pick (solo / host / join), solo setup, or join.
+function homeStep(s) {
+  local.homeStep = s;
+  $('.home-card').dataset.step = s;
+  if (s === 'solo') renderSolo();
+}
+
+// Solo picks are remembered, so a returning player just taps "Let's play!".
+function soloPrefs() {
+  const d = { players: 4, level: 'medium', mode: 'FF' };
+  try { return { ...d, ...JSON.parse(localStorage.getItem('cabo.solo') || '{}') }; } catch { return d; }
+}
+function renderSolo() {
+  const s = soloPrefs();
+  const opt = (k, v, label) => `<button class="lvl ${s[k] === v ? 'on' : ''}" data-do="soloSet" data-k="${k}" data-v="${v}">${label}</button>`;
+  setHTML($('#soloN'), [2, 3, 4, 5, 6].map((n) => opt('players', n, n)).join(''));
+  setHTML($('#soloLvl'), [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].map(([k, l]) => opt('level', k, l)).join(''));
+  setHTML($('#soloMode'), opt('mode', 'FF', 'Fastest Finger') + opt('mode', 'MD', 'Multiple Discard'));
+  const bots = s.players - 1;
+  $('#soloHint').textContent = `You + ${bots} bot${bots > 1 ? 's' : ''} · ${s.mode === 'FF' ? 'only the first match counts' : 'match as many as you can in 5 s'}`;
 }
 
 // Home screen story: the whole game in five tiny beats, told by a friendly card with a face on the
@@ -590,7 +613,7 @@ function renderActions() {
     else if (!me.ready) h = `${btn('Ready', 'viewReady', 'lime big')}${cap('memorise them')}`;
     else h = cap('Waiting for the others…');
   } else if (v.status === 'GAME_OVER') {
-    h = btn('Scores', 'results', 'white') + btn('Back to lobby', 'rematch', 'pink');
+    h = btn('Scores', 'results', 'white') + (soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink'));
   } else if (v.phase) {
     const give = v.phase.gives.find((g) => g.attackerId === v.you);
     if (give) h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
@@ -627,6 +650,9 @@ function renderCheat() {
 }
 
 // ---------------- results ----------------
+// You and only bots: the next round can start in one tap, same table and settings.
+const soloTable = () => V.hostId === V.you && V.players.every((p) => p.id === V.you || p.isBot);
+
 function showResults() {
   if (!V || !V.results) return;
   const r = V.results;
@@ -647,7 +673,7 @@ function showResults() {
   }).join('');
   const title = r.tie ? `It's a tie!` : r.winners[0] === V.you ? 'You win!' : `${esc(nameOf(r.winners[0]))} wins!`;
   openModal('results', `<h2>${title}</h2>
-    <div class="lobby-actions res-actions">${btn('Back to lobby', 'rematch', 'pink')}
+    <div class="lobby-actions res-actions">${soloTable() ? btn('Play again', 'again', 'pink') + btn('Change setup', 'rematch', 'white') : btn('Back to lobby', 'rematch', 'pink')}
     ${btn('View table', 'closeModal', 'white')}${btn('Leave', 'leave', 'white')}</div>${rows}`);
   // Confetti is saved for this moment only: a big burst as the winner is announced, plus one
   // from each winner's seat on the table behind.
@@ -696,6 +722,18 @@ document.addEventListener('click', (e) => {
   const nm = () => { const n = $('#nameIn').value.trim() || 'Player'; localStorage.setItem('cabo.name', n); return n; };
   switch (d) {
     case 'create': send({ type: 'create', name: nm() }); break;
+    case 'goSolo': homeStep('solo'); break;
+    case 'goJoin': homeStep('join'); $('#codeIn').focus(); break;
+    case 'homeBack': homeStep('pick'); break;
+    case 'soloSet': {
+      const s = soloPrefs();
+      s[b.dataset.k] = b.dataset.k === 'players' ? +b.dataset.v : b.dataset.v;
+      localStorage.setItem('cabo.solo', JSON.stringify(s));
+      renderSolo();
+      break;
+    }
+    case 'solo': send({ type: 'solo', name: nm(), ...soloPrefs() }); break;
+    case 'again': closeModal(); send({ type: 'rematch' }); send({ type: 'start' }); break;
     case 'join': {
       const code = $('#codeIn').value.trim().toUpperCase();
       if (code.length !== 4) return toast('Enter the 4-letter room code', 'bad');
@@ -1278,7 +1316,7 @@ function setUrl(u) { try { history.replaceState(null, '', u); } catch {} }
 if (window.CABO_OFFLINE) {
   // offline single-file build: no joining or invite links, just you vs bots
   document.body.classList.add('offline');
-  $('[data-do=create]').textContent = 'Play vs 3 bots';
+  local.homeStep = 'solo';
   save(null);
 }
 homeStory();

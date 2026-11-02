@@ -107,6 +107,12 @@ class Room {
   }
   event(ev) { for (const p of this.players) this.send(p, { type: 'event', ev }); }
 
+  addBot() {
+    const names = ['Botzilla', 'Robo Rita', 'Chip', 'Bleep', 'Sprocket', 'Gizmo'];
+    const used = new Set(this.players.map((x) => x.name));
+    this.players.push({ id: newId(), token: null, name: names.find((n) => !used.has(n)) || 'Bot', ready: true, isBot: true });
+  }
+
   start() {
     this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode);
     this.game.onUpdate = () => this.broadcast();
@@ -170,6 +176,17 @@ const handlers = {
     room.hostId = p.id;
     attach(ws, room, p);
   },
+  // Solo: a private room with bots, set up and started in one go.
+  solo(ws, m) {
+    handlers.create(ws, m);
+    const room = ws.ctx && ws.ctx.room;
+    if (!room || room.players.length !== 1) return;
+    const n = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, Math.floor(Number(m.players)) || 4));
+    while (room.players.length < n) room.addBot();
+    room.mode = m.mode === 'MD' ? 'MD' : 'FF';
+    room.level = LEVELS.includes(m.level) ? m.level : 'medium';
+    room.start();
+  },
   join(ws, m) {
     const room = rooms.get(str(m.code).toUpperCase().trim());
     if (!room) return err(ws, 'Room not found — check the code');
@@ -204,9 +221,7 @@ const roomHandlers = {
   addBot(room, p) {
     if (room.game || p.id !== room.hostId) return 'Only the host can add bots';
     if (room.players.length >= MAX_PLAYERS) return 'Room is full';
-    const names = ['Botzilla', 'Robo Rita', 'Chip', 'Bleep', 'Sprocket', 'Gizmo'];
-    const used = new Set(room.players.map((x) => x.name));
-    room.players.push({ id: newId(), token: null, name: names.find((n) => !used.has(n)) || 'Bot', ready: true, isBot: true });
+    room.addBot();
     room.broadcast();
   },
   kick(room, p, m) {
