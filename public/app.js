@@ -54,6 +54,8 @@ function onMsg(m) {
     save(null); V = null; show(); toast('The host removed you from the room.', 'bad');
   } else if (m.type === 'error') {
     toast(m.msg, 'bad'); sfx.nope();
+  } else if (m.type === 'note') {
+    toast(m.msg);
   } else if (m.type === 'state') {
     V = m.view;
     offset = V.now - Date.now();
@@ -441,10 +443,7 @@ function renderGame() {
   if (v.status === 'GAME_OVER' && !local.resultsShown) {
     local.resultsShown = true;
     setTimeout(showResults, 2200);
-  }
-  // the host left: whoever takes over gets the "Back to lobby" button on the open scoreboard
-  if (v.status === 'GAME_OVER' && $('#modal').dataset.kind === 'results' && local.resultsHost !== v.hostId) showResults();
-}
+  }}
 
 // Pick the largest card size at which the whole table fits the window, so no cards are ever cut off.
 // Only real layout boxes are measured (seats, center, page height): badges, stamps, flying cards and
@@ -591,7 +590,7 @@ function renderActions() {
     else if (!me.ready) h = `${btn('Ready', 'viewReady', 'lime big')}${cap('memorise them')}`;
     else h = cap('Waiting for the others…');
   } else if (v.status === 'GAME_OVER') {
-    h = btn('Scores', 'results', 'pink');
+    h = btn('Scores', 'results', 'white') + btn('Back to lobby', 'rematch', 'pink');
   } else if (v.phase) {
     const give = v.phase.gives.find((g) => g.attackerId === v.you);
     if (give) h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
@@ -631,9 +630,7 @@ function renderCheat() {
 function showResults() {
   if (!V || !V.results) return;
   const r = V.results;
-  const host = V.hostId === V.you;
   const reopen = $('#modal').dataset.kind === 'results';
-  local.resultsHost = V.hostId;
   const ord = (n) => n + (['th', 'st', 'nd', 'rd'][n] || 'th');
   const fmt = (n) => (n < 0 ? '−' + -n : String(n));
   const rows = r.players.map((p, i) => {
@@ -650,7 +647,7 @@ function showResults() {
   }).join('');
   const title = r.tie ? `It's a tie!` : r.winners[0] === V.you ? 'You win!' : `${esc(nameOf(r.winners[0]))} wins!`;
   openModal('results', `<h2>${title}</h2>
-    <div class="lobby-actions res-actions">${host ? btn('Back to lobby', 'rematch', 'pink') : '<span class="muted">Waiting for the host to start a new round…</span>'}
+    <div class="lobby-actions res-actions">${btn('Back to lobby', 'rematch', 'pink')}
     ${btn('View table', 'closeModal', 'white')}${btn('Leave', 'leave', 'white')}</div>${rows}`);
   // Confetti is saved for this moment only: a big burst as the winner is announced, plus one
   // from each winner's seat on the table behind.

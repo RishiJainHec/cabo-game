@@ -223,12 +223,15 @@ const roomHandlers = {
     if (!room.players.every((x) => x.ready || x.id === room.hostId)) return 'Waiting for everyone to be ready';
     room.start();
   },
+  // Once a game is over, anyone can take the whole table back to the lobby, where the host can
+  // change the mode, add or remove bots and start the next round with the same players.
   rematch(room, p) {
-    room.fixHost(true);
-    if (p.id !== room.hostId) return 'Only the host can do that';
-    if (room.game && room.game.status !== 'GAME_OVER') return 'Game still running';
+    if (!room.game) return;
+    if (room.game.status !== 'GAME_OVER') return 'Game still running';
     room.stopGame();
     room.players = room.players.filter((x) => x.isBot || room.connected(x));
+    room.fixHost(true);
+    for (const x of room.players) if (x !== p) room.send(x, { type: 'note', msg: `${p.name} took everyone back to the lobby` });
     room.broadcast();
   },
   leave(room, p, m, ws) {
