@@ -3117,6 +3117,7 @@ document.addEventListener('click', (e) => {
     case 'demoReplay': playDemo(); break;
     case 'demoPause': demoCtl.pause(b); break;
     case 'demoNext': demoCtl.next(); break;
+    case 'demoPrev': demoCtl.prev(); break;
     case 'closeModal': case 'bgClose': closeModal(); break;
     case 'results': local.resultsShown = true; showResults(); break;
     case 'mute': muted = !muted; localStorage.setItem('cabo.muted', muted ? '1' : '0'); $('#muteBtn').classList.toggle('off', muted); break;
@@ -3711,7 +3712,7 @@ requestAnimationFrame(frame);
 'use strict';
 // "How to play": a mini table that plays itself, one idea at a time, for someone who has never
 // played. Each step has a headline, a plain-language line, a highlight on the thing being talked
-// about, and the game's own sounds. Pause / Next let people go at their own speed.
+// about, and the game's own sounds. Previous / Pause / Next let people go at their own speed.
 // Reuses the game's card, flight and sticky-hand animations from app.js.
 (function () {
   const C = (id) => ({ id, rank: id.slice(0, -1), suit: id.slice(-1) });
@@ -3719,6 +3720,7 @@ requestAnimationFrame(frame);
   let run = 0;        // bumping this cancels a running demo
   let paused = false; // Pause button
   let skip = false;   // Next button: finish the current step at once
+  let cur = 0;        // the step on screen
 
   const slotHTML = (id, pen) => `<div class="slot${pen ? ' pen' : ''}"><div class="card"><div class="face back"></div><div class="face front">${id ? faceHTML(C(id)) : ''}</div></div></div>`;
   const seatHTML = (who, name, cards) => `<div class="d-seat d-${who}"><div class="d-name">${name}</div>
@@ -3738,6 +3740,7 @@ requestAnimationFrame(frame);
       </div>
       <div class="d-foot"><div class="d-dots">${'<span></span>'.repeat(STEPS)}</div>
         <div class="row">
+          <button class="btn small white" data-do="demoPrev" disabled>Previous</button>
           <button class="btn small white" data-do="demoPause">Pause</button>
           <button class="btn small white" data-do="demoNext">Next</button>
           <button class="btn small white" data-do="demoReplay">Replay</button>
@@ -3749,22 +3752,26 @@ requestAnimationFrame(frame);
     openModal('demo', '<div class="demo"></div>');
     play();
   };
-  window.playDemo = play;
+  window.playDemo = () => play(0);
   window.demoCtl = {
     pause(b) { paused = !paused; if (b) b.textContent = paused ? 'Play' : 'Pause'; },
     next() { skip = true; paused = false; const b = document.querySelector('[data-do=demoPause]'); if (b) b.textContent = 'Pause'; },
+    prev() { play(Math.max(0, cur - 1)); },
   };
 
-  async function play() {
+  // Each step builds on the table the steps before it left, so going back replays the demo from the
+  // top: steps before `from` run instantly and silently (no flights, sounds or waits), then it plays.
+  async function play(from = 0) {
     const token = ++run;
     paused = false; skip = false;
+    let fast = from > 0;
     const demo = document.querySelector('.demo');
     if (!demo) return;
     demo.innerHTML = stageHTML();
     const q = (s) => demo.querySelector(s);
     const alive = () => token === run && demo.isConnected;
     // waits that respect Pause, and end early when Next is pressed
-    const wait = (ms) => new Promise((res, rej) => {
+    const wait = (ms) => (fast ? (alive() ? Promise.resolve() : Promise.reject('stop')) : new Promise((res, rej) => {
       let left = ms, last = performance.now();
       const tick = () => {
         if (!alive()) return rej('stop');
@@ -3775,15 +3782,17 @@ requestAnimationFrame(frame);
         setTimeout(tick, 50);
       };
       tick();
-    });
-    const later = (ms, fn) => setTimeout(() => alive() && fn(), ms);
+    }));
+    const later = (ms, fn) => (fast ? fn() : setTimeout(() => alive() && fn(), ms));
+    const fly = (...a) => { if (!fast) flyCard(...a); };
+    const hand = (...a) => { if (!fast) stickyHand(...a); };
     const seat = (who) => q('.d-' + who);
     const slot = (who, i) => seat(who).querySelectorAll('.d-grid .slot')[i];
     const avatar = (who) => seat(who).querySelector('.d-name');
     const pile = q('.d-discard'), deck = q('.d-draw'), hold = q('.d-hold');
     const setPile = (id) => { pile.innerHTML = `<div class="face front">${faceHTML(C(id))}</div>`; };
     const setFace = (el, id) => { el.querySelector('.front').innerHTML = faceHTML(C(id)); };
-    const sound = (name) => { try { sfx[name](); } catch {} };
+    const sound = (name) => { if (fast) return; try { sfx[name](); } catch {} };
     const say = (title, sub = '') => {
       const c = q('.d-cap'), d = q('.d-sub');
       c.textContent = title; d.textContent = sub;
@@ -3793,7 +3802,12 @@ requestAnimationFrame(frame);
     // highlight what the words are about
     const focus = (...els) => { demo.querySelectorAll('.d-focus').forEach((e) => e.classList.remove('d-focus')); els.forEach((e) => e && e.classList.add('d-focus')); };
     const key = (html) => { const k = q('.d-key'); k.innerHTML = html || ''; k.classList.toggle('hidden', !html); };
-    const step = (n) => { skip = false; [...q('.d-dots').children].forEach((d, i) => d.classList.toggle('on', i <= n)); };
+    const step = (n) => {
+      cur = n; skip = false;
+      if (n >= from) fast = false;
+      [...q('.d-dots').children].forEach((d, i) => d.classList.toggle('on', i <= n));
+      q('[data-do=demoPrev]').disabled = n === 0;
+    };
 
     try {
       // 1 — the table
@@ -3832,7 +3846,7 @@ requestAnimationFrame(frame);
       deck.classList.remove('tapme');
       sound('draw');
       hold.innerHTML = `<div class="face front">${faceHTML(C('5H'))}</div>`;
-      flyCard(deck, hold, C('5H'), { ms: 900, arc: -50, spin: -10, flip: 'up' });
+      fly(deck, hold, C('5H'), { ms: 900, arc: -50, spin: -10, flip: 'up' });
       focus(hold);
       sub('You drew a 5.');
       await wait(2500);
@@ -3843,9 +3857,9 @@ requestAnimationFrame(frame);
       await wait(4000);
       target.classList.remove('sel');
       sound('whoosh');
-      flyCard(target, pile, C('KS'), { ms: 1100, arc: -80, spin: 18, flip: 'up' });
+      fly(target, pile, C('KS'), { ms: 1100, arc: -80, spin: 18, flip: 'up' });
       setPile('KS');
-      flyCard(hold, target, null, { delay: 500, ms: 900, arc: 30, spin: -8 });
+      fly(hold, target, null, { delay: 500, ms: 900, arc: 30, spin: -8 });
       setFace(target, '5H');
       later(500, () => { hold.innerHTML = ''; });
       sub('It was a King (13 points). It goes face up on the pile.');
@@ -3860,7 +3874,7 @@ requestAnimationFrame(frame);
       sub('Ann remembers that Bo has a King…');
       focus(slot('top', 0), avatar('left'));
       await wait(2500);
-      stickyHand(avatar('left'), slot('top', 0), { via: pile, card: C('KC'), color: '#2ee6d6' });
+      hand(avatar('left'), slot('top', 0), { via: pile, card: C('KC'), color: '#2ee6d6' });
       setPile('KC');
       later(500, () => slot('top', 0).classList.add('empty'));
       later(1050, () => sound('match'));
@@ -3875,7 +3889,7 @@ requestAnimationFrame(frame);
       focus(seat('left'), seat('top'));
       await wait(2500);
       sound('whoosh');
-      stickyHand(avatar('left'), slot('left', 1), { via: slot('top', 0), color: '#2ee6d6' });
+      hand(avatar('left'), slot('left', 1), { via: slot('top', 0), color: '#2ee6d6' });
       later(450, () => slot('left', 1).classList.add('empty'));
       later(1000, () => slot('top', 0).classList.remove('empty'));
       await wait(3500);
@@ -3887,7 +3901,7 @@ requestAnimationFrame(frame);
       say('Careful: wrong guesses cost you', 'Cat taps a card that is not a King…');
       focus(seat('right'));
       await wait(2500);
-      stickyHand(avatar('right'), slot('top', 1), { miss: true, color: '#9bf34a' });
+      hand(avatar('right'), slot('top', 1), { miss: true, color: '#9bf34a' });
       later(380, () => { slot('top', 1).classList.add('up', 'revealed'); sound('buzz'); focus(slot('top', 1)); });
       await wait(2000);
       sub('It was a 7, and now everyone has seen it.');
@@ -3898,7 +3912,7 @@ requestAnimationFrame(frame);
       const penSlot = pen.firstChild;
       seat('right').querySelector('.d-pen').appendChild(penSlot);
       sound('boop');
-      flyCard(deck, penSlot, null, { ms: 1000, arc: -60 });
+      fly(deck, penSlot, null, { ms: 1000, arc: -60 });
       focus(penSlot);
       await wait(4000);
       slot('top', 1).classList.remove('up', 'revealed');
@@ -3908,7 +3922,7 @@ requestAnimationFrame(frame);
       say('High cards have powers', 'Cards 7 to K go straight onto the pile. Then you use their power.');
       focus(deck, pile);
       sound('whoosh');
-      flyCard(deck, pile, C('9D'), { ms: 1000, arc: -80, spin: -14, flip: 'up' });
+      fly(deck, pile, C('9D'), { ms: 1000, arc: -80, spin: -14, flip: 'up' });
       setPile('9D');
       await wait(4500);
       key('<b>Powers</b><div>7, 8 — look at one of your cards</div><div>9, 10 — look at someone else\'s card</div><div>J — swap one of yours with any card</div><div>Q — look at a card, then maybe swap it</div><div>K — swap two other players\' cards</div>');
@@ -3919,7 +3933,7 @@ requestAnimationFrame(frame);
       sub('Bo drew this 9, so Bo looks at one of your cards. Only Bo sees it.');
       focus(slot('me', 0));
       await wait(2000);
-      stickyHand(avatar('top'), slot('me', 0), { color: '#ff86c2' });
+      hand(avatar('top'), slot('me', 0), { color: '#ff86c2' });
       later(380, () => { slot('me', 0).classList.add('flash'); sound('peek'); });
       await wait(3500);
       slot('me', 0).classList.remove('flash');

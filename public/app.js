@@ -774,6 +774,7 @@ document.addEventListener('click', (e) => {
     case 'demoReplay': playDemo(); break;
     case 'demoPause': demoCtl.pause(b); break;
     case 'demoNext': demoCtl.next(); break;
+    case 'demoPrev': demoCtl.prev(); break;
     case 'closeModal': case 'bgClose': closeModal(); break;
     case 'results': local.resultsShown = true; showResults(); break;
     case 'mute': muted = !muted; localStorage.setItem('cabo.muted', muted ? '1' : '0'); $('#muteBtn').classList.toggle('off', muted); break;
