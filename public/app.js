@@ -175,7 +175,7 @@ function homeStep(s) {
 
 // Solo picks are remembered, so a returning player just taps "Let's play!".
 function soloPrefs() {
-  const d = { players: 4, level: 'medium', mode: 'FF', open: true };
+  const d = { players: 4, level: 'medium', mode: 'FF' };
   try { return { ...d, ...JSON.parse(localStorage.getItem('cabo.solo') || '{}') }; } catch { return d; }
 }
 function renderSolo() {
@@ -184,9 +184,8 @@ function renderSolo() {
   setHTML($('#soloN'), [2, 3, 4, 5, 6].map((n) => opt('players', n, n)).join(''));
   setHTML($('#soloLvl'), [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].map(([k, l]) => opt('level', k, l)).join(''));
   setHTML($('#soloMode'), opt('mode', 'FF', 'Fastest Finger') + opt('mode', 'MD', 'Multiple Discard'));
-  setHTML($('#soloOpen'), opt('open', true, 'Until the next card') + opt('open', false, '5-second timer'));
   const bots = s.players - 1;
-  $('#soloHint').textContent = `You + ${bots} bot${bots > 1 ? 's' : ''} · ${s.mode === 'FF' ? 'only the first match counts' : 'match as many as you can'} · ${s.open ? 'no countdown' : '5 s to match'}`;
+  $('#soloHint').textContent = `You + ${bots} bot${bots > 1 ? 's' : ''} · ${s.mode === 'FF' ? 'only the first match counts' : 'match as many as you can'}`;
 }
 
 // Home screen story: the whole game in five tiny beats, told by a friendly card with a face on the
@@ -373,11 +372,8 @@ function renderLobby() {
   seats.forEach((html, i) => setHTML($('#lbSeats').children[i], html));
   const levels = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].map(([k, label]) =>
     `<button class="lvl ${V.level === k ? 'on' : ''}" data-do="level" data-level="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
-  const opens = [[true, 'Until the next card'], [false, '5-second timer']].map(([k, label]) =>
-    `<button class="lvl ${V.open === k ? 'on' : ''}" data-do="openRule" data-open="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
   setHTML($('#lbModes'), `<h3 style="margin-bottom:8px">Game mode ${host ? '' : '<span class="muted">(host picks)</span>'}</h3>
     <div class="modes">${modes}</div>
-    <div class="levels"><h3>Matching</h3><div class="lvl-row">${opens}</div></div>
     <div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>`);
   setHTML($('#lbActions'), `<div class="lobby-actions">
       ${host
@@ -441,7 +437,7 @@ function renderGame() {
   document.body.classList.toggle('powering', (v.open || !v.phase) && v.status === 'AWAITING_ACTION' && !!(t.power));
 
   $('#roomChip').textContent = 'Room ' + v.code;
-  $('#modeChip').textContent = MODE_NAME[v.mode] + (v.open ? '' : ' · 5 s');
+  $('#modeChip').textContent = MODE_NAME[v.mode];
   $('#modeChip').className = 'chip mode-' + v.mode.toLowerCase();
   $('#muteBtn').classList.toggle('off', muted);
 
@@ -729,11 +725,10 @@ const RULES = `<div class="rules"><h2>How to play CABO</h2><button class="btn sm
 <tr><td>9, 10</td><td>Spy on an opponent's card</td></tr><tr><td>J</td><td>Blind-swap one of yours with any card</td></tr>
 <tr><td>Q</td><td>Spy on an opponent's card, then optionally swap it with one of yours</td></tr><tr><td>K</td><td>Blind-swap two opponents' cards</td></tr></table>
 <h3>Matching</h3><p>Tap any card — yours or an opponent's — that matches the <b>rank</b> of the top discard.
-With <b>Until the next card</b>, it stays matchable until the next card lands on the pile, while play goes on (not while you're holding a drawn card or using a power).
-With the <b>5-second timer</b>, every discard pauses the game for 5 seconds of matching.
+It stays matchable until the next card lands on the pile, while play goes on (just not while you're holding a drawn card or using a power).
 Match your own card and it's gone. Match an opponent's card and you hand them one of yours into the same spot.
 Wrong card = a hidden <b>penalty card</b>.</p>
-<ul><li><b>Fastest Finger:</b> only the first match counts. Losing the race = penalty.</li><li><b>Multiple Discard:</b> keep matching until the window ends.</li></ul>
+<ul><li><b>Fastest Finger:</b> only the first match counts. Losing the race = penalty.</li><li><b>Multiple Discard:</b> keep matching until the next card lands.</li></ul>
 <h3>CABO</h3><p>At the start of your turn, call CABO instead of drawing. Your cards lock and everyone else gets one final turn.
 Run out of cards completely and CABO is called for you.</p>
 <h3>Scoring</h3><p>Add up your cards (J=11, Q=12, K=13, A=−1), penalties included. Four of a kind with no penalty cards scores <b>−4</b>. Lowest wins; ties are ties.</p></div>`;
@@ -761,7 +756,7 @@ document.addEventListener('click', (e) => {
     case 'soloSet': {
       const s = soloPrefs();
       const k = b.dataset.k, v = b.dataset.v;
-      s[k] = k === 'players' ? +v : k === 'open' ? v === 'true' : v;
+      s[k] = k === 'players' ? +v : v;
       localStorage.setItem('cabo.solo', JSON.stringify(s));
       renderSolo();
       break;
@@ -787,7 +782,6 @@ document.addEventListener('click', (e) => {
     case 'kick': send({ type: 'kick', id: b.dataset.id }); break;
     case 'mode': send({ type: 'setMode', mode: b.dataset.mode }); break;
     case 'level': send({ type: 'setLevel', level: b.dataset.level }); break;
-    case 'openRule': send({ type: 'setOpen', open: b.dataset.open === 'true' }); break;
     case 'ready': send({ type: 'ready', ready: !player(V.you).ready }); break;
     case 'start': send({ type: 'start' }); break;
     case 'rematch': closeModal(); send({ type: 'rematch' }); break;

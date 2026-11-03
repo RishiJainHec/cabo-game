@@ -34,7 +34,6 @@ class Room {
     this.players = []; // {id, name, token, ws, ready, isBot}
     this.hostId = null;
     this.mode = 'FF';
-    this.open = true;   // match until the next card (false: a 5-second window)
     this.level = 'medium'; // bot difficulty
     this.game = null;
     this.bots = [];
@@ -46,7 +45,7 @@ class Room {
   connected(p) { return p.isBot || (p.ws && p.ws.readyState === 1); }
 
   view(pid) {
-    const base = { code: this.code, hostId: this.hostId, mode: this.mode, open: this.open, level: this.level, you: pid };
+    const base = { code: this.code, hostId: this.hostId, mode: this.mode, level: this.level, you: pid };
     if (!this.game) {
       return {
         ...base, status: 'LOBBY', now: Date.now(),
@@ -115,7 +114,7 @@ class Room {
   }
 
   start() {
-    this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode, { open: this.open });
+    this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode, { open: true }); // match until the next card
     this.game.onUpdate = () => this.broadcast();
     this.game.onEvent = (ev) => this.event(ev);
     for (const p of this.players) if (!p.isBot && !this.connected(p)) this.game.setConnected(p.id, false);
@@ -186,7 +185,6 @@ const handlers = {
     while (room.players.length < n) room.addBot();
     room.mode = m.mode === 'MD' ? 'MD' : 'FF';
     room.level = LEVELS.includes(m.level) ? m.level : 'medium';
-    room.open = m.open !== false;
     room.start();
   },
   join(ws, m) {
@@ -213,11 +211,6 @@ const roomHandlers = {
   setMode(room, p, m) {
     if (room.game || p.id !== room.hostId) return 'Only the host can change the mode';
     room.mode = m.mode === 'MD' ? 'MD' : 'FF';
-    room.broadcast();
-  },
-  setOpen(room, p, m) {
-    if (room.game || p.id !== room.hostId) return 'Only the host can change the matching rule';
-    room.open = m.open !== false;
     room.broadcast();
   },
   setLevel(room, p, m) {
