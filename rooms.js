@@ -34,6 +34,7 @@ class Room {
     this.players = []; // {id, name, token, ws, ready, isBot}
     this.hostId = null;
     this.mode = 'FF';
+    this.open = true;   // match until the next card (false: a 5-second window)
     this.level = 'medium'; // bot difficulty
     this.game = null;
     this.bots = [];
@@ -45,14 +46,14 @@ class Room {
   connected(p) { return p.isBot || (p.ws && p.ws.readyState === 1); }
 
   view(pid) {
-    const base = { code: this.code, hostId: this.hostId, mode: this.mode, level: this.level, you: pid };
+    const base = { code: this.code, hostId: this.hostId, mode: this.mode, open: this.open, level: this.level, you: pid };
     if (!this.game) {
       return {
         ...base, status: 'LOBBY', now: Date.now(),
         players: this.players.map((p) => ({ id: p.id, name: p.name, ready: p.ready || p.id === this.hostId, connected: this.connected(p), isBot: p.isBot })),
       };
     }
-    return { ...this.game.view(pid), ...base, mode: this.game.mode };
+    return { ...this.game.view(pid), ...base, mode: this.game.mode, open: this.game.open };
   }
 
   send(p, obj) { if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify(obj)); }
@@ -82,7 +83,7 @@ class Room {
     if (g && !g.dead && g.status === 'INITIAL_VIEWING') {
       who = g.players.filter((x) => !x.isBot && !x.ready && !this.connected(this.get(x.id) || {}));
       key = 'view:' + who.map((x) => x.id).join(',');
-    } else if (g && !g.dead && !g.phase && g.turn && ['draw', 'choose', 'power', 'queen'].includes(g.turn.step)) {
+    } else if (g && !g.dead && g.status !== 'MATCHING_WINDOW' && g.turn && ['draw', 'choose', 'power', 'queen'].includes(g.turn.step)) {
       const a = g.players.find((x) => x.id === g.activeId);
       if (a && !a.isBot) { who = [a]; key = `turn:${g.turnNo}:${g.turn.step}:${g.turn.sel.length}:${this.connected(this.get(a.id) || {})}`; }
     }
@@ -114,7 +115,7 @@ class Room {
   }
 
   start() {
-    this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode);
+    this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode, { open: this.open });
     this.game.onUpdate = () => this.broadcast();
     this.game.onEvent = (ev) => this.event(ev);
     for (const p of this.players) if (!p.isBot && !this.connected(p)) this.game.setConnected(p.id, false);
@@ -185,6 +186,7 @@ const handlers = {
     while (room.players.length < n) room.addBot();
     room.mode = m.mode === 'MD' ? 'MD' : 'FF';
     room.level = LEVELS.includes(m.level) ? m.level : 'medium';
+    room.open = m.open !== false;
     room.start();
   },
   join(ws, m) {
@@ -211,6 +213,11 @@ const roomHandlers = {
   setMode(room, p, m) {
     if (room.game || p.id !== room.hostId) return 'Only the host can change the mode';
     room.mode = m.mode === 'MD' ? 'MD' : 'FF';
+    room.broadcast();
+  },
+  setOpen(room, p, m) {
+    if (room.game || p.id !== room.hostId) return 'Only the host can change the matching rule';
+    room.open = m.open !== false;
     room.broadcast();
   },
   setLevel(room, p, m) {

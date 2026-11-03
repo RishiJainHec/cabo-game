@@ -983,6 +983,16 @@ body.powering .seat.active .seat-head { border-color: var(--violet); }
 }
 @keyframes splash { 0% { scale: 1.7; rotate: -10deg; opacity: 0; } 18% { scale: 1; rotate: -4deg; opacity: 1; } 72% { scale: 1; opacity: 1; } 100% { scale: .85; rotate: -4deg; opacity: 0; } }
 
+/* ---------- open window: matching runs alongside play ---------- */
+/* the top discard glows while it can still be matched; cards stay calm but are tappable */
+body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yellow), 0 0 26px var(--yellow); animation: livepile 1.6s ease-in-out infinite; }
+@keyframes livepile { 50% { box-shadow: 0 0 0 4px var(--yellow), 0 0 40px var(--yellow); } }
+.slot.tappable { cursor: pointer; }
+.slot.tappable:hover .card { transform: translateY(-4px) scale(1.04); }
+.slot.tappable.up:hover .card { transform: rotateY(180deg) translateY(-4px) scale(1.04); }
+.matchcall.soft { font-size: 18px; animation: none; opacity: .9; }
+.matchcall.soft b { font-size: 24px; }
+
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='14' y='4' width='72' height='92' rx='12' fill='%23ff4fa3' stroke='%231d0f3f' stroke-width='6'/><circle cx='50' cy='50' r='18' fill='%23ffd23f' stroke='%231d0f3f' stroke-width='5'/></svg>">
 </head>
@@ -1015,6 +1025,8 @@ body.powering .seat.active .seat-head { border-color: var(--violet); }
           <div class="opt-row" id="soloLvl"></div>
           <div class="pick-lbl">Game type</div>
           <div class="opt-row" id="soloMode"></div>
+          <div class="pick-lbl">Matching</div>
+          <div class="opt-row" id="soloOpen"></div>
           <p class="opt-hint" id="soloHint"></p>
           <button class="btn pink big" data-do="solo">Let's play!</button>
         </div>
@@ -1135,6 +1147,11 @@ const makeDeck = () => {
 class Game {
   constructor(roomPlayers, mode, opts = {}) {
     this.mode = mode === 'MD' ? 'MD' : 'FF';
+    // Open window: the top discard stays matchable until the next card lands on the pile, and play
+    // carries on meanwhile. Otherwise each discard gets a fixed matching window that pauses the game.
+    this.open = !!opts.open;
+    this.minOpenMs = opts.minOpenMs ?? 3000; // open window: the next draw waits until a discard is this old
+    this.turnBeatMs = opts.turnBeatMs ?? 2000; // ...and at least this long after a turn starts
     this.matchMs = opts.matchMs ?? 5000;   // fixed matching window
     this.giveMs = opts.giveMs ?? 4000;     // time to choose a card to hand over after an opponent match
     this.viewPhaseMs = opts.viewPhaseMs ?? 90000; // AFK fallback; normally starts once everyone is ready
@@ -1174,7 +1191,7 @@ class Game {
     this.startIdx = crypto.randomInt(this.players.length);
     this.status = 'INITIAL_VIEWING';
     this.viewDeadline = Date.now() + this.viewPhaseMs;
-    this.addLog(`Cards dealt. ${this.mode === 'FF' ? 'Fastest Finger' : 'Multiple Discard'} mode. Peek at your bottom two cards!`, 'sys');
+    this.addLog(`Cards dealt. ${this.mode === 'FF' ? 'Fastest Finger' : 'Multiple Discard'} mode${this.open ? ', match until the next card' : ''}. Peek at your bottom two cards!`, 'sys');
     this.reschedule();
   }
 
@@ -1251,13 +1268,17 @@ class Game {
   tick() {
     if (this.dead) return;
     const now = Date.now();
+    // with an open window, cards still owed after a match come due while play goes on
+    if (this.phase && this.status !== 'INITIAL_VIEWING') {
+      if (this.phase.open && now >= this.phase.deadline) this.phase.open = false;
+      for (const g of [...this.phase.gives]) if (now >= g.due) this.autoGive(g);
+      if (this.open) this.fixActive();
+    }
     if (this.status === 'INITIAL_VIEWING' && now >= this.viewDeadline) {
       this.beginTurns();
     } else if (this.status === 'RESOLVING' && now >= this.holdUntil) {
       this.advance();
-    } else if (this.phase) {
-      if (this.phase.open && now >= this.phase.deadline) this.phase.open = false;
-      for (const g of [...this.phase.gives]) if (now >= g.due) this.autoGive(g);
+    } else {
       this.maybeAdvance();
     }
     this.update();
@@ -1277,8 +1298,9 @@ class Game {
     this.turnNo = (this.turnNo || 0) + 1;
     this.activeId = id;
     this.hand = null;
-    this.phase = null;
-    this.turn = { step: 'draw', sel: [], qt: null, power: null, powerDone: false, final: this.caboCaller != null };
+    // open window: a short beat at the start of every turn so the last discard can still be matched
+    if (this.phase && this.phase.open) this.phase.minUntil = Math.max(this.phase.minUntil, Date.now() + this.turnBeatMs);
+    this.turn ={ step: 'draw', sel: [], qt: null, power: null, powerDone: false, final: this.caboCaller != null };
     this.status = this.caboCaller != null ? 'FINAL_TURNS' : 'PLAYER_TURN';
     const pl = this.p(id);
     this.addLog(this.turn.final ? `Final turn: ${pl.name}` : `${pl.name}'s turn`, 'turn');
@@ -1288,16 +1310,38 @@ class Game {
   openMatching() {
     const now = Date.now();
     this.hand = null;
+    const prev = this.phase;
+    this.phase = {
+      id: ++this.phaseCounter, start: now, deadline: this.open ? Infinity : now + this.matchMs, mode: this.mode,
+      ref: this.top(), open: true, matched: false, winnerId: null, matches: 0,
+      gives: prev ? prev.gives : [], // cards still owed from the last match carry over
+      failed: new Set(), minUntil: this.open ? now + this.minOpenMs : 0,
+    };
+    this.fx('window', { phaseId: this.phase.id });
+    // open window: no pause, the turn carries on (power, or the next player)
+    if (this.open) return this.advance();
     this.turn.step = 'matching';
     this.status = 'MATCHING_WINDOW';
-    this.phase = {
-      id: ++this.phaseCounter, start: now, deadline: now + this.matchMs, mode: this.mode,
-      ref: this.top(), open: true, matched: false, winnerId: null, matches: 0,
-      gives: [], failed: new Set(),
-    };
     // Power peeks stay visible for the window plus a moment
     for (const list of Object.values(this.peeks)) for (const k of list) k.until = Math.min(k.until, this.phase.deadline + 3000);
-    this.fx('window', { phaseId: this.phase.id });
+  }
+
+  // Open window: matches happen during other people's moves. If one leaves the player whose turn
+  // it is unable to finish their move (no cards left to swap or use a power on), their turn ends.
+  fixActive() {
+    const a = this.p(this.activeId), t = this.turn;
+    if (!a || !t || this.status === 'GAME_OVER' || !['draw', 'choose', 'power'].includes(t.step)) return;
+    const stuck = a.locked || (t.step === 'choose' && !this.occupied(a).length) || (t.step === 'power' && !this.canPower());
+    if (!stuck) return;
+    t.powerDone = true;
+    if (this.hand) {
+      // the drawn card has nowhere to go, so it's discarded (and is the new card to match)
+      this.discard.push(this.hand);
+      this.addLog(`${a.name} discarded ${an(this.hand.rank)}.`);
+      this.fx('discard', { pid: a.id });
+      return this.openMatching();
+    }
+    this.advance();
   }
 
   maybeAdvance() {
@@ -1309,7 +1353,7 @@ class Game {
   }
 
   advance() {
-    this.phase = null;
+    if (!this.open) this.phase = null; // an open window lasts until the next discard
     const t = this.turn;
     if (t && t.power && !t.powerDone) {
       const drawer = this.p(this.activeId);
@@ -1458,6 +1502,9 @@ class Game {
 
   act_draw(pl) {
     const e = this.activeCheck(pl, 'draw'); if (e) return e;
+    const ph = this.phase;
+    if (ph && ph.gives.some((g) => g.attackerId === pl.id)) return { error: 'Give a card first!' };
+    if (ph && ph.open && Date.now() < ph.minUntil) return { error: 'Hold on, the others can still match' };
     const c = this.drawCard();
     if (!c) { this.endGame('No cards left to draw — game ends.'); return; }
     this.turn.sel = [];
@@ -1630,8 +1677,10 @@ class Game {
       // Fastest Finger: someone else won the race. Tapping a card while the result is still on
       // screen costs a penalty card (once), as does a click that was already in flight when the
       // phase ended.
+      // (An open window shows the result for the same pause a timed one does.)
       const lc = this.lastClosed;
-      if (lc && m.phaseId === lc.id && (current || now - lc.at <= this.graceMs) && pl.id !== lc.winnerId && !lc.penalized.has(pl.id)) {
+      const late = lc && (now - lc.at <= this.graceMs || (current && (!this.open || now - lc.at <= this.pauseMs)));
+      if (late && m.phaseId === lc.id && pl.id !== lc.winnerId && !lc.penalized.has(pl.id)) {
         const t = this.p(m.owner);
         const ok = t && !t.locked && Number.isInteger(m.idx) && m.idx >= 0 && m.idx < t.slots.length &&
           (t.slots[m.idx] || (m.owner === lc.owner && m.idx === lc.idx));
@@ -1641,6 +1690,8 @@ class Game {
     }
     if (now > ph.deadline) return { error: 'Too late!' };
     if (ph.gives.some((g) => g.attackerId === pl.id)) return { error: 'Give a card first!' };
+    // open window: your hands are full while you hold a drawn card or use a power
+    if (pl.id === this.activeId && this.turn && ['choose', 'power', 'queen'].includes(this.turn.step)) return { error: 'Finish your move first' };
     const t = this.look(m.owner, m.idx, m.ver); if (t.err) return { error: t.err };
     const failKey = `${pl.id}:${m.owner}:${m.idx}:${t.s.ver}`;
     if (ph.failed.has(failKey)) return { error: 'You already tried that card' };
@@ -1670,7 +1721,7 @@ class Game {
       this.addLog(`${pl.name} matched ${t.pl.name}'s ${card.rank}!`, 'good');
       this.fx('match', { pid: pl.id, owner: t.pl.id, idx: m.idx, card });
       t.pl.reserved.add(m.idx);
-      const g = { attackerId: pl.id, owner: t.pl.id, idx: m.idx, due: Math.max(ph.deadline, now + this.giveMs) };
+      const g = { attackerId: pl.id, owner: t.pl.id, idx: m.idx, due: this.open ? now + this.giveMs : Math.max(ph.deadline, now + this.giveMs) };
       ph.gives.push(g);
       const mine = this.occupied(pl);
       if (mine.length === 1) this.doGive(g, mine[0]); // only one card: no choice to make
@@ -1680,6 +1731,7 @@ class Game {
       if (this.autoCaboPending == null) ph.open = false; // window keeps running only for the last-card rule
       this.maybeAdvance();
     }
+    if (this.open) this.fixActive();
   }
 
   act_give(pl, m) {
@@ -1690,6 +1742,7 @@ class Game {
     const s = this.look(pl.id, m.idx, m.ver, true); if (s.err) return { error: s.err };
     this.doGive(g, m.idx);
     this.maybeAdvance();
+    if (this.open) this.fixActive();
   }
 
   autoGive(g) {
@@ -1751,7 +1804,7 @@ class Game {
       else if (turn.step === 'power' || turn.step === 'queen') turn.step = 'choose';
     }
     return {
-      gameId: this.gameId, status: this.status, mode: this.mode, now, you: pid, reveals,
+      gameId: this.gameId, status: this.status, mode: this.mode, open: this.open, now, you: pid, reveals,
       players: this.players.map((pl) => ({
         id: pl.id, name: pl.name, isBot: pl.isBot, connected: pl.connected, locked: pl.locked,
         caller: pl.caller, exhausted: pl.exhausted, ready: pl.ready, viewed: pl.viewed, count: this.count(pl),
@@ -1761,7 +1814,10 @@ class Game {
       activeId: this.activeId, turn,
       hand: active ? this.hand : null, handHeld: !!this.hand,
       phase: ph && {
-        id: ph.id, deadline: ph.deadline, open: ph.open, matched: ph.matched, winnerId: ph.winnerId,
+        id: ph.id, deadline: ph.deadline === Infinity ? null : ph.deadline, open: ph.open, matched: ph.matched, winnerId: ph.winnerId,
+        minUntil: ph.minUntil, ref: ph.ref && ph.ref.rank,
+        // open window: until when a tap after someone else won the race still costs a penalty
+        lateUntil: this.open && this.lastClosed && this.lastClosed.id === ph.id ? this.lastClosed.at + this.pauseMs : null,
         matches: ph.matches, gives: ph.gives.map((g) => ({ attackerId: g.attackerId, owner: g.owner, idx: g.idx, due: g.due })),
       },
       viewDeadline: this.status === 'INITIAL_VIEWING' ? this.viewDeadline : null,
@@ -1818,11 +1874,14 @@ class Bot {
     this.turns = 0;
     this.n = 0;
     this.lastPhase = null;
+    this.tried = new Set(); // open window: "phase:slot" matches already decided on
   }
 
   poke() {
     if (this.timer || this.game.dead) return;
-    const matching = this.game.phase && this.game.phase.open;
+    const g = this.game;
+    // react quickly to a fresh discard; take normal thinking time over our own moves
+    const matching = g.phase && g.phase.open && (!g.open || g.activeId !== this.pid);
     this.timer = setTimeout(() => {
       this.timer = null;
       try { this.think(); } catch (e) { console.error(e); } // never let a bot take the server down
@@ -1864,20 +1923,26 @@ class Bot {
     }
 
     if (v.phase && v.phase.open && !(v.mode === 'FF' && v.phase.matched)) {
-      if (this.standIn) return;
-      const ref = v.discardTop.rank;
-      const mine = own.find((s) => known(s) && known(s).rank === ref);
-      const theirs = cfg.steal && opps.find((s) => known(s) && known(s).rank === ref);
-      const t = mine ? { ...mine, owner: this.pid } : theirs;
-      if (t && Math.random() < cfg.matchChance) {
-        this.act({ a: 'match', phaseId: v.phase.id, owner: t.owner, idx: t.idx, ver: t.ver });
-      } else if (!t && this.lastPhase !== v.phase.id && Math.random() < cfg.blunder) {
-        const s = pick(opps); // an overconfident guess
-        if (s) this.act({ a: 'match', phaseId: v.phase.id, owner: s.owner, idx: s.idx, ver: s.ver });
+      if (!this.standIn && !this.busy(v)) {
+        const ref = v.phase.ref || v.discardTop.rank;
+        const mine = own.find((s) => known(s) && known(s).rank === ref);
+        const theirs = cfg.steal && opps.find((s) => known(s) && known(s).rank === ref);
+        const t = mine ? { ...mine, owner: this.pid } : theirs;
+        // open window: think() runs many times per discard, so each chance is decided only once
+        const key = t && v.phase.id + ':' + t.owner + ':' + t.ver;
+        const fresh = !v.open || !this.tried.has(key);
+        if (t && fresh) this.tried.add(key);
+        if (t && fresh && Math.random() < cfg.matchChance) {
+          if (this.act({ a: 'match', phaseId: v.phase.id, owner: t.owner, idx: t.idx, ver: t.ver }) && v.open) return this.poke();
+        } else if (!t && this.lastPhase !== v.phase.id && Math.random() < cfg.blunder) {
+          const s = pick(opps); // an overconfident guess
+          if (s) this.act({ a: 'match', phaseId: v.phase.id, owner: s.owner, idx: s.idx, ver: s.ver });
+        }
+        this.lastPhase = v.phase.id;
       }
-      this.lastPhase = v.phase.id;
-      return;
+      if (!v.open) return; // a timed window pauses the game; an open one doesn't
     }
+    if (v.open && this.tried.size > 200) this.tried.clear();
 
     if (v.activeId !== this.pid || !v.turn) return;
     const step = v.turn.step;
@@ -1887,7 +1952,7 @@ class Bot {
       const estimate = own.reduce((t, s) => t + val(s, 6), 0);
       const late = this.turns > cfg.caboLate && Math.random() < 0.35;
       if (!v.turn.final && v.caboCaller == null && (estimate <= cfg.caboAt || late)) this.act({ a: 'cabo' });
-      else this.act({ a: 'draw' });
+      else if (!this.act({ a: 'draw' })) { this.turns--; return this.poke(); } // open window: others still get their beat to match
       return;
     }
     const h = v.hand || { rank: v.turn.power }; // power cards are already on the pile
@@ -1930,6 +1995,9 @@ class Bot {
       else this.act({ a: 'queen', swap: false });
     }
   }
+
+  // Our own move is under way (holding a drawn card, or using a power): no matching meanwhile.
+  busy(v) { return v.activeId === this.pid && v.turn && ['choose', 'power', 'queen'].includes(v.turn.step); }
 
   afterSwap() {
     // After a swap we know what we put down: record it under the new slot version.
@@ -1985,6 +2053,7 @@ class Room {
     this.players = []; // {id, name, token, ws, ready, isBot}
     this.hostId = null;
     this.mode = 'FF';
+    this.open = true;   // match until the next card (false: a 5-second window)
     this.level = 'medium'; // bot difficulty
     this.game = null;
     this.bots = [];
@@ -1996,14 +2065,14 @@ class Room {
   connected(p) { return p.isBot || (p.ws && p.ws.readyState === 1); }
 
   view(pid) {
-    const base = { code: this.code, hostId: this.hostId, mode: this.mode, level: this.level, you: pid };
+    const base = { code: this.code, hostId: this.hostId, mode: this.mode, open: this.open, level: this.level, you: pid };
     if (!this.game) {
       return {
         ...base, status: 'LOBBY', now: Date.now(),
         players: this.players.map((p) => ({ id: p.id, name: p.name, ready: p.ready || p.id === this.hostId, connected: this.connected(p), isBot: p.isBot })),
       };
     }
-    return { ...this.game.view(pid), ...base, mode: this.game.mode };
+    return { ...this.game.view(pid), ...base, mode: this.game.mode, open: this.game.open };
   }
 
   send(p, obj) { if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify(obj)); }
@@ -2033,7 +2102,7 @@ class Room {
     if (g && !g.dead && g.status === 'INITIAL_VIEWING') {
       who = g.players.filter((x) => !x.isBot && !x.ready && !this.connected(this.get(x.id) || {}));
       key = 'view:' + who.map((x) => x.id).join(',');
-    } else if (g && !g.dead && !g.phase && g.turn && ['draw', 'choose', 'power', 'queen'].includes(g.turn.step)) {
+    } else if (g && !g.dead && g.status !== 'MATCHING_WINDOW' && g.turn && ['draw', 'choose', 'power', 'queen'].includes(g.turn.step)) {
       const a = g.players.find((x) => x.id === g.activeId);
       if (a && !a.isBot) { who = [a]; key = `turn:${g.turnNo}:${g.turn.step}:${g.turn.sel.length}:${this.connected(this.get(a.id) || {})}`; }
     }
@@ -2065,7 +2134,7 @@ class Room {
   }
 
   start() {
-    this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode);
+    this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode, { open: this.open });
     this.game.onUpdate = () => this.broadcast();
     this.game.onEvent = (ev) => this.event(ev);
     for (const p of this.players) if (!p.isBot && !this.connected(p)) this.game.setConnected(p.id, false);
@@ -2136,6 +2205,7 @@ const handlers = {
     while (room.players.length < n) room.addBot();
     room.mode = m.mode === 'MD' ? 'MD' : 'FF';
     room.level = LEVELS.includes(m.level) ? m.level : 'medium';
+    room.open = m.open !== false;
     room.start();
   },
   join(ws, m) {
@@ -2162,6 +2232,11 @@ const roomHandlers = {
   setMode(room, p, m) {
     if (room.game || p.id !== room.hostId) return 'Only the host can change the mode';
     room.mode = m.mode === 'MD' ? 'MD' : 'FF';
+    room.broadcast();
+  },
+  setOpen(room, p, m) {
+    if (room.game || p.id !== room.hostId) return 'Only the host can change the matching rule';
+    room.open = m.open !== false;
     room.broadcast();
   },
   setLevel(room, p, m) {
@@ -2374,15 +2449,15 @@ function interaction() {
   const open = (o) => !player(o).locked;
   const give = V.phase && V.phase.gives.find((g) => g.attackerId === V.you);
   if (give) return { kind: 'give', ok: own };
-  if (V.phase) {
-    if (me.locked) return null;
-    // Fastest Finger: once someone has won the race, a late tap still goes through and costs a penalty
-    if (V.mode === 'FF' && V.phase.matched) return V.phase.winnerId === V.you ? null : { kind: 'match', ok: open };
-    if (!V.phase.open || snow() >= V.phase.deadline) return null;
-    return { kind: 'match', ok: open };
+  const t = V.turn;
+  // A timed window pauses the game, so it's all there is to do. An open window runs alongside the
+  // turns, except while you're in the middle of your own move (holding a drawn card, using a power).
+  const busy = ownTurn() && ['choose', 'power', 'queen'].includes(t.step);
+  if (V.phase && !busy) {
+    const m = matchInteraction(me, open);
+    if (m || !V.open) return m;
   }
   if (!ownTurn()) return null;
-  const t = V.turn;
   if (t.step === 'choose') return V.hand && POWER[V.hand.rank] === 'swap' ? { kind: 'swap', ok: own } : null;
   if (t.step === 'queen') return local.queenSwap ? { kind: 'queenSwap', ok: own } : null;
   if (t.step !== 'power' || !powerRank()) return null;
@@ -2396,6 +2471,23 @@ function interaction() {
   }
   return null;
 }
+// Matching the top discard. In an open window it's always on, so the cards aren't lit up ("quiet");
+// the glowing discard says a match is possible.
+function matchInteraction(me, open) {
+  const ph = V.phase;
+  if (me.locked) return null;
+  // Fastest Finger: once someone has won the race, a late tap still goes through and costs a penalty
+  if (V.mode === 'FF' && ph.matched) {
+    if (ph.winnerId === V.you || (ph.lateUntil && snow() > ph.lateUntil)) return null;
+    return { kind: 'match', ok: open, quiet: V.open };
+  }
+  if (!ph.open || (ph.deadline && snow() >= ph.deadline)) return null;
+  return { kind: 'match', ok: open, quiet: V.open };
+}
+// Open window: the deck stays shut for a moment after each discard so everyone can match it.
+const drawLocked = () => !!(V.open && V.phase && V.phase.open && snow() < V.phase.minUntil);
+// The top discard can still be matched (open window).
+const livePile = () => !!(V.open && V.phase && V.phase.open && !(V.mode === 'FF' && V.phase.matched));
 
 // ---------------- screens ----------------
 function show() {
@@ -2435,7 +2527,7 @@ function homeStep(s) {
 
 // Solo picks are remembered, so a returning player just taps "Let's play!".
 function soloPrefs() {
-  const d = { players: 4, level: 'medium', mode: 'FF' };
+  const d = { players: 4, level: 'medium', mode: 'FF', open: true };
   try { return { ...d, ...JSON.parse(localStorage.getItem('cabo.solo') || '{}') }; } catch { return d; }
 }
 function renderSolo() {
@@ -2444,8 +2536,9 @@ function renderSolo() {
   setHTML($('#soloN'), [2, 3, 4, 5, 6].map((n) => opt('players', n, n)).join(''));
   setHTML($('#soloLvl'), [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].map(([k, l]) => opt('level', k, l)).join(''));
   setHTML($('#soloMode'), opt('mode', 'FF', 'Fastest Finger') + opt('mode', 'MD', 'Multiple Discard'));
+  setHTML($('#soloOpen'), opt('open', true, 'Until the next card') + opt('open', false, '5-second timer'));
   const bots = s.players - 1;
-  $('#soloHint').textContent = `You + ${bots} bot${bots > 1 ? 's' : ''} · ${s.mode === 'FF' ? 'only the first match counts' : 'match as many as you can in 5 s'}`;
+  $('#soloHint').textContent = `You + ${bots} bot${bots > 1 ? 's' : ''} · ${s.mode === 'FF' ? 'only the first match counts' : 'match as many as you can'} · ${s.open ? 'no countdown' : '5 s to match'}`;
 }
 
 // Home screen story: the whole game in five tiny beats, told by a friendly card with a face on the
@@ -2617,7 +2710,7 @@ function renderLobby() {
   const allReady = V.players.every((p) => p.ready);
   const modes = ['FF', 'MD'].map((m) => `<button class="mode ${V.mode === m ? 'on' : ''}" data-do="mode" data-mode="${m}" ${host ? '' : 'disabled'}>
       <h3>${m === 'FF' ? 'Fastest Finger' : 'Multiple Discard'}</h3>
-      <p>${m === 'FF' ? 'Only the FIRST match counts. Lose the race? Penalty card!' : 'Match as many as you can in 5 seconds. No race penalties.'}</p></button>`).join('');
+      <p>${m === 'FF' ? 'Only the FIRST match counts. Lose the race? Penalty card!' : 'Match as many as you can. No race penalties.'}</p></button>`).join('');
   // Each part redraws only when its own content changes, so toggling the mode doesn't replay the player tiles.
   const card = $('#lobbyCard');
   if (!card.querySelector('#lbSeats')) card.innerHTML = '<div id="lbTop"></div><div class="seats4" id="lbSeats">' + '<div></div>'.repeat(6) + '</div><div id="lbModes"></div><div id="lbActions"></div>';
@@ -2632,8 +2725,11 @@ function renderLobby() {
   seats.forEach((html, i) => setHTML($('#lbSeats').children[i], html));
   const levels = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].map(([k, label]) =>
     `<button class="lvl ${V.level === k ? 'on' : ''}" data-do="level" data-level="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
+  const opens = [[true, 'Until the next card'], [false, '5-second timer']].map(([k, label]) =>
+    `<button class="lvl ${V.open === k ? 'on' : ''}" data-do="openRule" data-open="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
   setHTML($('#lbModes'), `<h3 style="margin-bottom:8px">Game mode ${host ? '' : '<span class="muted">(host picks)</span>'}</h3>
     <div class="modes">${modes}</div>
+    <div class="levels"><h3>Matching</h3><div class="lvl-row">${opens}</div></div>
     <div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>`);
   setHTML($('#lbActions'), `<div class="lobby-actions">
       ${host
@@ -2691,11 +2787,13 @@ function renderGame() {
   const tk = `${v.activeId}|${t.step}|${v.phase ? v.phase.id : ''}`;
   if (tk !== local.turnKey) { local.turnKey = tk; local.sel = null; local.queenSwap = false; cancelHold(); }
   // Two clearly different moods: yellow while anyone may match, purple while the drawer uses a power.
-  document.body.classList.toggle('matching', !!(v.phase && v.phase.open));
-  document.body.classList.toggle('powering', !v.phase && v.status === 'AWAITING_ACTION' && !!(t.power));
+  // An open window is always running, so it only makes the top discard glow.
+  document.body.classList.toggle('matching', !v.open && !!(v.phase && v.phase.open));
+  document.body.classList.toggle('livepile', livePile());
+  document.body.classList.toggle('powering', (v.open || !v.phase) && v.status === 'AWAITING_ACTION' && !!(t.power));
 
   $('#roomChip').textContent = 'Room ' + v.code;
-  $('#modeChip').textContent = MODE_NAME[v.mode];
+  $('#modeChip').textContent = MODE_NAME[v.mode] + (v.open ? '' : ' · 5 s');
   $('#modeChip').className = 'chip mode-' + v.mode.toLowerCase();
   $('#muteBtn').classList.toggle('off', muted);
 
@@ -2827,7 +2925,7 @@ function renderSeat(s, p, me) {
     const selected = (local.sel && local.sel.owner === p.id && local.sel.idx === idx) ||
       sel.some((x) => x.owner === p.id && x.idx === idx) || (qt && qt.owner === p.id && qt.idx === idx);
     const cls = ['slot', pen && 'pen', sl.empty && 'empty', sl.reserved && 'reserved', card && 'up', seen && seen.peek && 'peek',
-      seen && seen.revealed && 'revealed', clickable && 'elig', clickable && it.kind === 'swap' && 'swaptarget', selected && 'sel', p.locked && !over && 'locked'].filter(Boolean).join(' ');
+      seen && seen.revealed && 'revealed', clickable && (it.quiet ? 'tappable' : 'elig'), clickable && it.kind === 'swap' && 'swaptarget', selected && 'sel', p.locked && !over && 'locked'].filter(Boolean).join(' ');
     el.className = cls + (el._keep && el._keep.size ? ' ' + [...el._keep].join(' ') : '');
     if (over) el.querySelector('.card').style.transitionDelay = (V.players.indexOf(p) * 4 + idx) * 70 + 'ms';
     const fk = card ? card.id : '';
@@ -2841,7 +2939,7 @@ const tilt = (id) => ([...id].reduce((a, c) => a + c.charCodeAt(0), 0) % 21) - 1
 
 function renderCenter() {
   const v = V;
-  const canDraw = ownTurn() && v.turn && v.turn.step === 'draw' && v.status !== 'GAME_OVER';
+  const canDraw = ownTurn() && v.turn && v.turn.step === 'draw' && v.status !== 'GAME_OVER' && !drawLocked();
   const dp = $('#drawPile');
   setHTML(dp, v.draw > 0 ? '<div class="face back"></div><div class="face back"></div><div class="face back"></div>' : '<div class="face"></div>');
   dp.classList.toggle('empty', v.draw === 0);
@@ -2893,13 +2991,14 @@ function renderActions() {
     else h = cap('Waiting for the others…');
   } else if (v.status === 'GAME_OVER') {
     h = `<div class="row">${btn('Scores', 'results', 'white')}${soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink')}</div>`;
-  } else if (v.phase) {
+  } else if (v.phase && v.phase.gives.some((g) => g.attackerId === v.you)) {
     const give = v.phase.gives.find((g) => g.attackerId === v.you);
-    if (give) h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
-    else if (v.mode === 'FF' && v.phase.matched) h = cap(`${esc(nameOf(v.phase.winnerId))} got it`);
+    h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
+  } else if (v.phase && !v.open) {
+    if (v.mode === 'FF' && v.phase.matched) h = cap(`${esc(nameOf(v.phase.winnerId))} got it`);
     else if (!me.locked) h = `<div class="matchcall">tap ${/^(A|8)$/.test(v.discardTop.rank) ? 'an' : 'a'} <b>${v.discardTop.rank}</b></div>`;
   } else if (ownTurn()) {
-    if (t.step === 'draw') h = cap(t.final ? 'Tap the deck · last turn' : 'Tap the deck');
+    if (t.step === 'draw') h = drawLocked() ? cap('Deck opens in a sec…') : cap(t.final ? 'Tap the deck · last turn' : 'Tap the deck');
     else if (t.step === 'choose') {
       h = cap('Click one of your cards to swap it');
     } else if (t.step === 'power') {
@@ -2909,11 +3008,14 @@ function renderActions() {
         ? `${cap('Pick one of yours')}${btn('←', 'queenBack', 'white small')}`
         : `<div class="row">${btn('Swap', 'queenSwap', 'lime big')}${btn('Keep', 'queenKeep', 'white big')}</div>`;
     } else if (v.status === 'RESOLVING' && visiblePeeks().length) {
-      h = cap('Got it? Tap the card to close it');
+      const pk = visiblePeeks()[0];
+      h = cap(livePile() && pk.card.rank === v.phase.ref ? 'It matches! Tap it to match' : 'Got it? Tap the card to close it');
     }
   } else if (t.power && v.status === 'AWAITING_ACTION') {
     // someone else is using a power: say who and what, in a few words
     h = `<div class="powercall">${esc(nameOf(v.activeId))} · ${TIP[POWER[t.power]]}</div>`;
+  } else if (livePile() && !me.locked) {
+    h = `<div class="matchcall soft">got ${/^(A|8)$/.test(v.phase.ref) ? 'an' : 'a'} <b>${v.phase.ref}</b>? tap it</div>`;
   }
   setHTML($('#actions'), h);
 }
@@ -2978,10 +3080,12 @@ const RULES = `<div class="rules"><h2>How to play CABO</h2><button class="btn sm
 <table><tr><td>A–6</td><td>Must swap. Ace is worth <b>−1</b>!</td></tr><tr><td>7, 8</td><td>Peek at one of your own cards</td></tr>
 <tr><td>9, 10</td><td>Spy on an opponent's card</td></tr><tr><td>J</td><td>Blind-swap one of yours with any card</td></tr>
 <tr><td>Q</td><td>Spy on an opponent's card, then optionally swap it with one of yours</td></tr><tr><td>K</td><td>Blind-swap two opponents' cards</td></tr></table>
-<h3>Matching (5 seconds)</h3><p>Every discard opens a 5-second window. Tap any card — yours or an opponent's — that matches the discard's <b>rank</b>.
+<h3>Matching</h3><p>Tap any card — yours or an opponent's — that matches the <b>rank</b> of the top discard.
+With <b>Until the next card</b>, it stays matchable until the next card lands on the pile, while play goes on (not while you're holding a drawn card or using a power).
+With the <b>5-second timer</b>, every discard pauses the game for 5 seconds of matching.
 Match your own card and it's gone. Match an opponent's card and you hand them one of yours into the same spot.
 Wrong card = a hidden <b>penalty card</b>.</p>
-<ul><li><b>Fastest Finger:</b> only the first match counts. Losing the race = penalty.</li><li><b>Multiple Discard:</b> keep matching until time runs out.</li></ul>
+<ul><li><b>Fastest Finger:</b> only the first match counts. Losing the race = penalty.</li><li><b>Multiple Discard:</b> keep matching until the window ends.</li></ul>
 <h3>CABO</h3><p>At the start of your turn, call CABO instead of drawing. Your cards lock and everyone else gets one final turn.
 Run out of cards completely and CABO is called for you.</p>
 <h3>Scoring</h3><p>Add up your cards (J=11, Q=12, K=13, A=−1), penalties included. Four of a kind with no penalty cards scores <b>−4</b>. Lowest wins; ties are ties.</p></div>`;
@@ -3008,7 +3112,8 @@ document.addEventListener('click', (e) => {
     case 'homeBack': homeStep('pick'); break;
     case 'soloSet': {
       const s = soloPrefs();
-      s[b.dataset.k] = b.dataset.k === 'players' ? +b.dataset.v : b.dataset.v;
+      const k = b.dataset.k, v = b.dataset.v;
+      s[k] = k === 'players' ? +v : k === 'open' ? v === 'true' : v;
       localStorage.setItem('cabo.solo', JSON.stringify(s));
       renderSolo();
       break;
@@ -3034,6 +3139,7 @@ document.addEventListener('click', (e) => {
     case 'kick': send({ type: 'kick', id: b.dataset.id }); break;
     case 'mode': send({ type: 'setMode', mode: b.dataset.mode }); break;
     case 'level': send({ type: 'setLevel', level: b.dataset.level }); break;
+    case 'openRule': send({ type: 'setOpen', open: b.dataset.open === 'true' }); break;
     case 'ready': send({ type: 'ready', ready: !player(V.you).ready }); break;
     case 'start': send({ type: 'start' }); break;
     case 'rematch': closeModal(); send({ type: 'rematch' }); break;
@@ -3099,8 +3205,11 @@ function clickSlot(el) {
   const idx = Number(el.dataset.idx);
   const p = player(owner);
   const s = p && p.slots[idx];
-  // tapping the card you're peeking at closes it and the game moves on
-  if (s && ownTurn() && V.turn && (V.status === 'RESOLVING' || (V.turn.step === 'queen' && !local.queenSwap)) && at(visiblePeeks(), owner, idx, s)) {
+  // tapping the card you're peeking at closes it and the game moves on; in an open window, if it
+  // matches the card on the pile, the tap matches it instead
+  const pk = s && ownTurn() && V.turn && (V.status === 'RESOLVING' || (V.turn.step === 'queen' && !local.queenSwap)) && at(visiblePeeks(), owner, idx, s);
+  const pkMatch = pk && V.status === 'RESOLVING' && livePile() && pk.card.rank === V.phase.ref;
+  if (pk && !pkMatch) {
     pulse(el, 'tapped');
     act('seen');
     return;
@@ -3499,7 +3608,7 @@ function runFx(ev) {
       sfx.cabo(); caboCall(ev); shake();
       break;
     case 'reshuffle': reshuffleFx(); break;
-    case 'window': sfx.open(); splash('MATCH!', 'match'); break;
+    case 'window': sfx.open(); if (!V.open) splash('MATCH!', 'match'); break; // open window: the pile just glows
     case 'gameover': sfx.reveal(); break;
   }
 }
@@ -3544,7 +3653,8 @@ function frame() {
   if (!V || V.status === 'LOBBY') return;
   const now = snow();
   // re-render when a peek expires or the matching window closes locally
-  const sig = visiblePeeks().length + ':' + visibleReveals().length + ':' + (V.phase && V.phase.open && now < V.phase.deadline ? 1 : 0);
+  const sig = visiblePeeks().length + ':' + visibleReveals().length + ':' + (V.phase && V.phase.open && now < V.phase.deadline ? 1 : 0) +
+    ':' + drawLocked() + ':' + !!(V.phase && V.phase.lateUntil && now < V.phase.lateUntil);
   if (sig !== lastSig) { lastSig = sig; renderGame(); }
   if (V.phase) {
     const rem = Math.max(0, V.phase.deadline - now);

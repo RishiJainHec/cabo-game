@@ -32,11 +32,14 @@ class Bot {
     this.turns = 0;
     this.n = 0;
     this.lastPhase = null;
+    this.tried = new Set(); // open window: "phase:slot" matches already decided on
   }
 
   poke() {
     if (this.timer || this.game.dead) return;
-    const matching = this.game.phase && this.game.phase.open;
+    const g = this.game;
+    // react quickly to a fresh discard; take normal thinking time over our own moves
+    const matching = g.phase && g.phase.open && (!g.open || g.activeId !== this.pid);
     this.timer = setTimeout(() => {
       this.timer = null;
       try { this.think(); } catch (e) { console.error(e); } // never let a bot take the server down
@@ -78,20 +81,26 @@ class Bot {
     }
 
     if (v.phase && v.phase.open && !(v.mode === 'FF' && v.phase.matched)) {
-      if (this.standIn) return;
-      const ref = v.discardTop.rank;
-      const mine = own.find((s) => known(s) && known(s).rank === ref);
-      const theirs = cfg.steal && opps.find((s) => known(s) && known(s).rank === ref);
-      const t = mine ? { ...mine, owner: this.pid } : theirs;
-      if (t && Math.random() < cfg.matchChance) {
-        this.act({ a: 'match', phaseId: v.phase.id, owner: t.owner, idx: t.idx, ver: t.ver });
-      } else if (!t && this.lastPhase !== v.phase.id && Math.random() < cfg.blunder) {
-        const s = pick(opps); // an overconfident guess
-        if (s) this.act({ a: 'match', phaseId: v.phase.id, owner: s.owner, idx: s.idx, ver: s.ver });
+      if (!this.standIn && !this.busy(v)) {
+        const ref = v.phase.ref || v.discardTop.rank;
+        const mine = own.find((s) => known(s) && known(s).rank === ref);
+        const theirs = cfg.steal && opps.find((s) => known(s) && known(s).rank === ref);
+        const t = mine ? { ...mine, owner: this.pid } : theirs;
+        // open window: think() runs many times per discard, so each chance is decided only once
+        const key = t && v.phase.id + ':' + t.owner + ':' + t.ver;
+        const fresh = !v.open || !this.tried.has(key);
+        if (t && fresh) this.tried.add(key);
+        if (t && fresh && Math.random() < cfg.matchChance) {
+          if (this.act({ a: 'match', phaseId: v.phase.id, owner: t.owner, idx: t.idx, ver: t.ver }) && v.open) return this.poke();
+        } else if (!t && this.lastPhase !== v.phase.id && Math.random() < cfg.blunder) {
+          const s = pick(opps); // an overconfident guess
+          if (s) this.act({ a: 'match', phaseId: v.phase.id, owner: s.owner, idx: s.idx, ver: s.ver });
+        }
+        this.lastPhase = v.phase.id;
       }
-      this.lastPhase = v.phase.id;
-      return;
+      if (!v.open) return; // a timed window pauses the game; an open one doesn't
     }
+    if (v.open && this.tried.size > 200) this.tried.clear();
 
     if (v.activeId !== this.pid || !v.turn) return;
     const step = v.turn.step;
@@ -101,7 +110,7 @@ class Bot {
       const estimate = own.reduce((t, s) => t + val(s, 6), 0);
       const late = this.turns > cfg.caboLate && Math.random() < 0.35;
       if (!v.turn.final && v.caboCaller == null && (estimate <= cfg.caboAt || late)) this.act({ a: 'cabo' });
-      else this.act({ a: 'draw' });
+      else if (!this.act({ a: 'draw' })) { this.turns--; return this.poke(); } // open window: others still get their beat to match
       return;
     }
     const h = v.hand || { rank: v.turn.power }; // power cards are already on the pile
@@ -144,6 +153,9 @@ class Bot {
       else this.act({ a: 'queen', swap: false });
     }
   }
+
+  // Our own move is under way (holding a drawn card, or using a power): no matching meanwhile.
+  busy(v) { return v.activeId === this.pid && v.turn && ['choose', 'power', 'queen'].includes(v.turn.step); }
 
   afterSwap() {
     // After a swap we know what we put down: record it under the new slot version.

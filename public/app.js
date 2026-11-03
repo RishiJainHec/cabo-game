@@ -97,15 +97,15 @@ function interaction() {
   const open = (o) => !player(o).locked;
   const give = V.phase && V.phase.gives.find((g) => g.attackerId === V.you);
   if (give) return { kind: 'give', ok: own };
-  if (V.phase) {
-    if (me.locked) return null;
-    // Fastest Finger: once someone has won the race, a late tap still goes through and costs a penalty
-    if (V.mode === 'FF' && V.phase.matched) return V.phase.winnerId === V.you ? null : { kind: 'match', ok: open };
-    if (!V.phase.open || snow() >= V.phase.deadline) return null;
-    return { kind: 'match', ok: open };
+  const t = V.turn;
+  // A timed window pauses the game, so it's all there is to do. An open window runs alongside the
+  // turns, except while you're in the middle of your own move (holding a drawn card, using a power).
+  const busy = ownTurn() && ['choose', 'power', 'queen'].includes(t.step);
+  if (V.phase && !busy) {
+    const m = matchInteraction(me, open);
+    if (m || !V.open) return m;
   }
   if (!ownTurn()) return null;
-  const t = V.turn;
   if (t.step === 'choose') return V.hand && POWER[V.hand.rank] === 'swap' ? { kind: 'swap', ok: own } : null;
   if (t.step === 'queen') return local.queenSwap ? { kind: 'queenSwap', ok: own } : null;
   if (t.step !== 'power' || !powerRank()) return null;
@@ -119,6 +119,23 @@ function interaction() {
   }
   return null;
 }
+// Matching the top discard. In an open window it's always on, so the cards aren't lit up ("quiet");
+// the glowing discard says a match is possible.
+function matchInteraction(me, open) {
+  const ph = V.phase;
+  if (me.locked) return null;
+  // Fastest Finger: once someone has won the race, a late tap still goes through and costs a penalty
+  if (V.mode === 'FF' && ph.matched) {
+    if (ph.winnerId === V.you || (ph.lateUntil && snow() > ph.lateUntil)) return null;
+    return { kind: 'match', ok: open, quiet: V.open };
+  }
+  if (!ph.open || (ph.deadline && snow() >= ph.deadline)) return null;
+  return { kind: 'match', ok: open, quiet: V.open };
+}
+// Open window: the deck stays shut for a moment after each discard so everyone can match it.
+const drawLocked = () => !!(V.open && V.phase && V.phase.open && snow() < V.phase.minUntil);
+// The top discard can still be matched (open window).
+const livePile = () => !!(V.open && V.phase && V.phase.open && !(V.mode === 'FF' && V.phase.matched));
 
 // ---------------- screens ----------------
 function show() {
@@ -158,7 +175,7 @@ function homeStep(s) {
 
 // Solo picks are remembered, so a returning player just taps "Let's play!".
 function soloPrefs() {
-  const d = { players: 4, level: 'medium', mode: 'FF' };
+  const d = { players: 4, level: 'medium', mode: 'FF', open: true };
   try { return { ...d, ...JSON.parse(localStorage.getItem('cabo.solo') || '{}') }; } catch { return d; }
 }
 function renderSolo() {
@@ -167,8 +184,9 @@ function renderSolo() {
   setHTML($('#soloN'), [2, 3, 4, 5, 6].map((n) => opt('players', n, n)).join(''));
   setHTML($('#soloLvl'), [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].map(([k, l]) => opt('level', k, l)).join(''));
   setHTML($('#soloMode'), opt('mode', 'FF', 'Fastest Finger') + opt('mode', 'MD', 'Multiple Discard'));
+  setHTML($('#soloOpen'), opt('open', true, 'Until the next card') + opt('open', false, '5-second timer'));
   const bots = s.players - 1;
-  $('#soloHint').textContent = `You + ${bots} bot${bots > 1 ? 's' : ''} · ${s.mode === 'FF' ? 'only the first match counts' : 'match as many as you can in 5 s'}`;
+  $('#soloHint').textContent = `You + ${bots} bot${bots > 1 ? 's' : ''} · ${s.mode === 'FF' ? 'only the first match counts' : 'match as many as you can'} · ${s.open ? 'no countdown' : '5 s to match'}`;
 }
 
 // Home screen story: the whole game in five tiny beats, told by a friendly card with a face on the
@@ -340,7 +358,7 @@ function renderLobby() {
   const allReady = V.players.every((p) => p.ready);
   const modes = ['FF', 'MD'].map((m) => `<button class="mode ${V.mode === m ? 'on' : ''}" data-do="mode" data-mode="${m}" ${host ? '' : 'disabled'}>
       <h3>${m === 'FF' ? 'Fastest Finger' : 'Multiple Discard'}</h3>
-      <p>${m === 'FF' ? 'Only the FIRST match counts. Lose the race? Penalty card!' : 'Match as many as you can in 5 seconds. No race penalties.'}</p></button>`).join('');
+      <p>${m === 'FF' ? 'Only the FIRST match counts. Lose the race? Penalty card!' : 'Match as many as you can. No race penalties.'}</p></button>`).join('');
   // Each part redraws only when its own content changes, so toggling the mode doesn't replay the player tiles.
   const card = $('#lobbyCard');
   if (!card.querySelector('#lbSeats')) card.innerHTML = '<div id="lbTop"></div><div class="seats4" id="lbSeats">' + '<div></div>'.repeat(6) + '</div><div id="lbModes"></div><div id="lbActions"></div>';
@@ -355,8 +373,11 @@ function renderLobby() {
   seats.forEach((html, i) => setHTML($('#lbSeats').children[i], html));
   const levels = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']].map(([k, label]) =>
     `<button class="lvl ${V.level === k ? 'on' : ''}" data-do="level" data-level="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
+  const opens = [[true, 'Until the next card'], [false, '5-second timer']].map(([k, label]) =>
+    `<button class="lvl ${V.open === k ? 'on' : ''}" data-do="openRule" data-open="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
   setHTML($('#lbModes'), `<h3 style="margin-bottom:8px">Game mode ${host ? '' : '<span class="muted">(host picks)</span>'}</h3>
     <div class="modes">${modes}</div>
+    <div class="levels"><h3>Matching</h3><div class="lvl-row">${opens}</div></div>
     <div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>`);
   setHTML($('#lbActions'), `<div class="lobby-actions">
       ${host
@@ -414,11 +435,13 @@ function renderGame() {
   const tk = `${v.activeId}|${t.step}|${v.phase ? v.phase.id : ''}`;
   if (tk !== local.turnKey) { local.turnKey = tk; local.sel = null; local.queenSwap = false; cancelHold(); }
   // Two clearly different moods: yellow while anyone may match, purple while the drawer uses a power.
-  document.body.classList.toggle('matching', !!(v.phase && v.phase.open));
-  document.body.classList.toggle('powering', !v.phase && v.status === 'AWAITING_ACTION' && !!(t.power));
+  // An open window is always running, so it only makes the top discard glow.
+  document.body.classList.toggle('matching', !v.open && !!(v.phase && v.phase.open));
+  document.body.classList.toggle('livepile', livePile());
+  document.body.classList.toggle('powering', (v.open || !v.phase) && v.status === 'AWAITING_ACTION' && !!(t.power));
 
   $('#roomChip').textContent = 'Room ' + v.code;
-  $('#modeChip').textContent = MODE_NAME[v.mode];
+  $('#modeChip').textContent = MODE_NAME[v.mode] + (v.open ? '' : ' · 5 s');
   $('#modeChip').className = 'chip mode-' + v.mode.toLowerCase();
   $('#muteBtn').classList.toggle('off', muted);
 
@@ -550,7 +573,7 @@ function renderSeat(s, p, me) {
     const selected = (local.sel && local.sel.owner === p.id && local.sel.idx === idx) ||
       sel.some((x) => x.owner === p.id && x.idx === idx) || (qt && qt.owner === p.id && qt.idx === idx);
     const cls = ['slot', pen && 'pen', sl.empty && 'empty', sl.reserved && 'reserved', card && 'up', seen && seen.peek && 'peek',
-      seen && seen.revealed && 'revealed', clickable && 'elig', clickable && it.kind === 'swap' && 'swaptarget', selected && 'sel', p.locked && !over && 'locked'].filter(Boolean).join(' ');
+      seen && seen.revealed && 'revealed', clickable && (it.quiet ? 'tappable' : 'elig'), clickable && it.kind === 'swap' && 'swaptarget', selected && 'sel', p.locked && !over && 'locked'].filter(Boolean).join(' ');
     el.className = cls + (el._keep && el._keep.size ? ' ' + [...el._keep].join(' ') : '');
     if (over) el.querySelector('.card').style.transitionDelay = (V.players.indexOf(p) * 4 + idx) * 70 + 'ms';
     const fk = card ? card.id : '';
@@ -564,7 +587,7 @@ const tilt = (id) => ([...id].reduce((a, c) => a + c.charCodeAt(0), 0) % 21) - 1
 
 function renderCenter() {
   const v = V;
-  const canDraw = ownTurn() && v.turn && v.turn.step === 'draw' && v.status !== 'GAME_OVER';
+  const canDraw = ownTurn() && v.turn && v.turn.step === 'draw' && v.status !== 'GAME_OVER' && !drawLocked();
   const dp = $('#drawPile');
   setHTML(dp, v.draw > 0 ? '<div class="face back"></div><div class="face back"></div><div class="face back"></div>' : '<div class="face"></div>');
   dp.classList.toggle('empty', v.draw === 0);
@@ -616,13 +639,14 @@ function renderActions() {
     else h = cap('Waiting for the others…');
   } else if (v.status === 'GAME_OVER') {
     h = `<div class="row">${btn('Scores', 'results', 'white')}${soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink')}</div>`;
-  } else if (v.phase) {
+  } else if (v.phase && v.phase.gives.some((g) => g.attackerId === v.you)) {
     const give = v.phase.gives.find((g) => g.attackerId === v.you);
-    if (give) h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
-    else if (v.mode === 'FF' && v.phase.matched) h = cap(`${esc(nameOf(v.phase.winnerId))} got it`);
+    h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
+  } else if (v.phase && !v.open) {
+    if (v.mode === 'FF' && v.phase.matched) h = cap(`${esc(nameOf(v.phase.winnerId))} got it`);
     else if (!me.locked) h = `<div class="matchcall">tap ${/^(A|8)$/.test(v.discardTop.rank) ? 'an' : 'a'} <b>${v.discardTop.rank}</b></div>`;
   } else if (ownTurn()) {
-    if (t.step === 'draw') h = cap(t.final ? 'Tap the deck · last turn' : 'Tap the deck');
+    if (t.step === 'draw') h = drawLocked() ? cap('Deck opens in a sec…') : cap(t.final ? 'Tap the deck · last turn' : 'Tap the deck');
     else if (t.step === 'choose') {
       h = cap('Click one of your cards to swap it');
     } else if (t.step === 'power') {
@@ -632,11 +656,14 @@ function renderActions() {
         ? `${cap('Pick one of yours')}${btn('←', 'queenBack', 'white small')}`
         : `<div class="row">${btn('Swap', 'queenSwap', 'lime big')}${btn('Keep', 'queenKeep', 'white big')}</div>`;
     } else if (v.status === 'RESOLVING' && visiblePeeks().length) {
-      h = cap('Got it? Tap the card to close it');
+      const pk = visiblePeeks()[0];
+      h = cap(livePile() && pk.card.rank === v.phase.ref ? 'It matches! Tap it to match' : 'Got it? Tap the card to close it');
     }
   } else if (t.power && v.status === 'AWAITING_ACTION') {
     // someone else is using a power: say who and what, in a few words
     h = `<div class="powercall">${esc(nameOf(v.activeId))} · ${TIP[POWER[t.power]]}</div>`;
+  } else if (livePile() && !me.locked) {
+    h = `<div class="matchcall soft">got ${/^(A|8)$/.test(v.phase.ref) ? 'an' : 'a'} <b>${v.phase.ref}</b>? tap it</div>`;
   }
   setHTML($('#actions'), h);
 }
@@ -701,10 +728,12 @@ const RULES = `<div class="rules"><h2>How to play CABO</h2><button class="btn sm
 <table><tr><td>A–6</td><td>Must swap. Ace is worth <b>−1</b>!</td></tr><tr><td>7, 8</td><td>Peek at one of your own cards</td></tr>
 <tr><td>9, 10</td><td>Spy on an opponent's card</td></tr><tr><td>J</td><td>Blind-swap one of yours with any card</td></tr>
 <tr><td>Q</td><td>Spy on an opponent's card, then optionally swap it with one of yours</td></tr><tr><td>K</td><td>Blind-swap two opponents' cards</td></tr></table>
-<h3>Matching (5 seconds)</h3><p>Every discard opens a 5-second window. Tap any card — yours or an opponent's — that matches the discard's <b>rank</b>.
+<h3>Matching</h3><p>Tap any card — yours or an opponent's — that matches the <b>rank</b> of the top discard.
+With <b>Until the next card</b>, it stays matchable until the next card lands on the pile, while play goes on (not while you're holding a drawn card or using a power).
+With the <b>5-second timer</b>, every discard pauses the game for 5 seconds of matching.
 Match your own card and it's gone. Match an opponent's card and you hand them one of yours into the same spot.
 Wrong card = a hidden <b>penalty card</b>.</p>
-<ul><li><b>Fastest Finger:</b> only the first match counts. Losing the race = penalty.</li><li><b>Multiple Discard:</b> keep matching until time runs out.</li></ul>
+<ul><li><b>Fastest Finger:</b> only the first match counts. Losing the race = penalty.</li><li><b>Multiple Discard:</b> keep matching until the window ends.</li></ul>
 <h3>CABO</h3><p>At the start of your turn, call CABO instead of drawing. Your cards lock and everyone else gets one final turn.
 Run out of cards completely and CABO is called for you.</p>
 <h3>Scoring</h3><p>Add up your cards (J=11, Q=12, K=13, A=−1), penalties included. Four of a kind with no penalty cards scores <b>−4</b>. Lowest wins; ties are ties.</p></div>`;
@@ -731,7 +760,8 @@ document.addEventListener('click', (e) => {
     case 'homeBack': homeStep('pick'); break;
     case 'soloSet': {
       const s = soloPrefs();
-      s[b.dataset.k] = b.dataset.k === 'players' ? +b.dataset.v : b.dataset.v;
+      const k = b.dataset.k, v = b.dataset.v;
+      s[k] = k === 'players' ? +v : k === 'open' ? v === 'true' : v;
       localStorage.setItem('cabo.solo', JSON.stringify(s));
       renderSolo();
       break;
@@ -757,6 +787,7 @@ document.addEventListener('click', (e) => {
     case 'kick': send({ type: 'kick', id: b.dataset.id }); break;
     case 'mode': send({ type: 'setMode', mode: b.dataset.mode }); break;
     case 'level': send({ type: 'setLevel', level: b.dataset.level }); break;
+    case 'openRule': send({ type: 'setOpen', open: b.dataset.open === 'true' }); break;
     case 'ready': send({ type: 'ready', ready: !player(V.you).ready }); break;
     case 'start': send({ type: 'start' }); break;
     case 'rematch': closeModal(); send({ type: 'rematch' }); break;
@@ -822,8 +853,11 @@ function clickSlot(el) {
   const idx = Number(el.dataset.idx);
   const p = player(owner);
   const s = p && p.slots[idx];
-  // tapping the card you're peeking at closes it and the game moves on
-  if (s && ownTurn() && V.turn && (V.status === 'RESOLVING' || (V.turn.step === 'queen' && !local.queenSwap)) && at(visiblePeeks(), owner, idx, s)) {
+  // tapping the card you're peeking at closes it and the game moves on; in an open window, if it
+  // matches the card on the pile, the tap matches it instead
+  const pk = s && ownTurn() && V.turn && (V.status === 'RESOLVING' || (V.turn.step === 'queen' && !local.queenSwap)) && at(visiblePeeks(), owner, idx, s);
+  const pkMatch = pk && V.status === 'RESOLVING' && livePile() && pk.card.rank === V.phase.ref;
+  if (pk && !pkMatch) {
     pulse(el, 'tapped');
     act('seen');
     return;
@@ -1222,7 +1256,7 @@ function runFx(ev) {
       sfx.cabo(); caboCall(ev); shake();
       break;
     case 'reshuffle': reshuffleFx(); break;
-    case 'window': sfx.open(); splash('MATCH!', 'match'); break;
+    case 'window': sfx.open(); if (!V.open) splash('MATCH!', 'match'); break; // open window: the pile just glows
     case 'gameover': sfx.reveal(); break;
   }
 }
@@ -1267,7 +1301,8 @@ function frame() {
   if (!V || V.status === 'LOBBY') return;
   const now = snow();
   // re-render when a peek expires or the matching window closes locally
-  const sig = visiblePeeks().length + ':' + visibleReveals().length + ':' + (V.phase && V.phase.open && now < V.phase.deadline ? 1 : 0);
+  const sig = visiblePeeks().length + ':' + visibleReveals().length + ':' + (V.phase && V.phase.open && now < V.phase.deadline ? 1 : 0) +
+    ':' + drawLocked() + ':' + !!(V.phase && V.phase.lateUntil && now < V.phase.lateUntil);
   if (sig !== lastSig) { lastSig = sig; renderGame(); }
   if (V.phase) {
     const rem = Math.max(0, V.phase.deadline - now);

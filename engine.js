@@ -28,6 +28,11 @@ const makeDeck = () => {
 class Game {
   constructor(roomPlayers, mode, opts = {}) {
     this.mode = mode === 'MD' ? 'MD' : 'FF';
+    // Open window: the top discard stays matchable until the next card lands on the pile, and play
+    // carries on meanwhile. Otherwise each discard gets a fixed matching window that pauses the game.
+    this.open = !!opts.open;
+    this.minOpenMs = opts.minOpenMs ?? 3000; // open window: the next draw waits until a discard is this old
+    this.turnBeatMs = opts.turnBeatMs ?? 2000; // ...and at least this long after a turn starts
     this.matchMs = opts.matchMs ?? 5000;   // fixed matching window
     this.giveMs = opts.giveMs ?? 4000;     // time to choose a card to hand over after an opponent match
     this.viewPhaseMs = opts.viewPhaseMs ?? 90000; // AFK fallback; normally starts once everyone is ready
@@ -67,7 +72,7 @@ class Game {
     this.startIdx = crypto.randomInt(this.players.length);
     this.status = 'INITIAL_VIEWING';
     this.viewDeadline = Date.now() + this.viewPhaseMs;
-    this.addLog(`Cards dealt. ${this.mode === 'FF' ? 'Fastest Finger' : 'Multiple Discard'} mode. Peek at your bottom two cards!`, 'sys');
+    this.addLog(`Cards dealt. ${this.mode === 'FF' ? 'Fastest Finger' : 'Multiple Discard'} mode${this.open ? ', match until the next card' : ''}. Peek at your bottom two cards!`, 'sys');
     this.reschedule();
   }
 
@@ -144,13 +149,17 @@ class Game {
   tick() {
     if (this.dead) return;
     const now = Date.now();
+    // with an open window, cards still owed after a match come due while play goes on
+    if (this.phase && this.status !== 'INITIAL_VIEWING') {
+      if (this.phase.open && now >= this.phase.deadline) this.phase.open = false;
+      for (const g of [...this.phase.gives]) if (now >= g.due) this.autoGive(g);
+      if (this.open) this.fixActive();
+    }
     if (this.status === 'INITIAL_VIEWING' && now >= this.viewDeadline) {
       this.beginTurns();
     } else if (this.status === 'RESOLVING' && now >= this.holdUntil) {
       this.advance();
-    } else if (this.phase) {
-      if (this.phase.open && now >= this.phase.deadline) this.phase.open = false;
-      for (const g of [...this.phase.gives]) if (now >= g.due) this.autoGive(g);
+    } else {
       this.maybeAdvance();
     }
     this.update();
@@ -170,8 +179,9 @@ class Game {
     this.turnNo = (this.turnNo || 0) + 1;
     this.activeId = id;
     this.hand = null;
-    this.phase = null;
-    this.turn = { step: 'draw', sel: [], qt: null, power: null, powerDone: false, final: this.caboCaller != null };
+    // open window: a short beat at the start of every turn so the last discard can still be matched
+    if (this.phase && this.phase.open) this.phase.minUntil = Math.max(this.phase.minUntil, Date.now() + this.turnBeatMs);
+    this.turn ={ step: 'draw', sel: [], qt: null, power: null, powerDone: false, final: this.caboCaller != null };
     this.status = this.caboCaller != null ? 'FINAL_TURNS' : 'PLAYER_TURN';
     const pl = this.p(id);
     this.addLog(this.turn.final ? `Final turn: ${pl.name}` : `${pl.name}'s turn`, 'turn');
@@ -181,16 +191,38 @@ class Game {
   openMatching() {
     const now = Date.now();
     this.hand = null;
+    const prev = this.phase;
+    this.phase = {
+      id: ++this.phaseCounter, start: now, deadline: this.open ? Infinity : now + this.matchMs, mode: this.mode,
+      ref: this.top(), open: true, matched: false, winnerId: null, matches: 0,
+      gives: prev ? prev.gives : [], // cards still owed from the last match carry over
+      failed: new Set(), minUntil: this.open ? now + this.minOpenMs : 0,
+    };
+    this.fx('window', { phaseId: this.phase.id });
+    // open window: no pause, the turn carries on (power, or the next player)
+    if (this.open) return this.advance();
     this.turn.step = 'matching';
     this.status = 'MATCHING_WINDOW';
-    this.phase = {
-      id: ++this.phaseCounter, start: now, deadline: now + this.matchMs, mode: this.mode,
-      ref: this.top(), open: true, matched: false, winnerId: null, matches: 0,
-      gives: [], failed: new Set(),
-    };
     // Power peeks stay visible for the window plus a moment
     for (const list of Object.values(this.peeks)) for (const k of list) k.until = Math.min(k.until, this.phase.deadline + 3000);
-    this.fx('window', { phaseId: this.phase.id });
+  }
+
+  // Open window: matches happen during other people's moves. If one leaves the player whose turn
+  // it is unable to finish their move (no cards left to swap or use a power on), their turn ends.
+  fixActive() {
+    const a = this.p(this.activeId), t = this.turn;
+    if (!a || !t || this.status === 'GAME_OVER' || !['draw', 'choose', 'power'].includes(t.step)) return;
+    const stuck = a.locked || (t.step === 'choose' && !this.occupied(a).length) || (t.step === 'power' && !this.canPower());
+    if (!stuck) return;
+    t.powerDone = true;
+    if (this.hand) {
+      // the drawn card has nowhere to go, so it's discarded (and is the new card to match)
+      this.discard.push(this.hand);
+      this.addLog(`${a.name} discarded ${an(this.hand.rank)}.`);
+      this.fx('discard', { pid: a.id });
+      return this.openMatching();
+    }
+    this.advance();
   }
 
   maybeAdvance() {
@@ -202,7 +234,7 @@ class Game {
   }
 
   advance() {
-    this.phase = null;
+    if (!this.open) this.phase = null; // an open window lasts until the next discard
     const t = this.turn;
     if (t && t.power && !t.powerDone) {
       const drawer = this.p(this.activeId);
@@ -351,6 +383,9 @@ class Game {
 
   act_draw(pl) {
     const e = this.activeCheck(pl, 'draw'); if (e) return e;
+    const ph = this.phase;
+    if (ph && ph.gives.some((g) => g.attackerId === pl.id)) return { error: 'Give a card first!' };
+    if (ph && ph.open && Date.now() < ph.minUntil) return { error: 'Hold on, the others can still match' };
     const c = this.drawCard();
     if (!c) { this.endGame('No cards left to draw — game ends.'); return; }
     this.turn.sel = [];
@@ -523,8 +558,10 @@ class Game {
       // Fastest Finger: someone else won the race. Tapping a card while the result is still on
       // screen costs a penalty card (once), as does a click that was already in flight when the
       // phase ended.
+      // (An open window shows the result for the same pause a timed one does.)
       const lc = this.lastClosed;
-      if (lc && m.phaseId === lc.id && (current || now - lc.at <= this.graceMs) && pl.id !== lc.winnerId && !lc.penalized.has(pl.id)) {
+      const late = lc && (now - lc.at <= this.graceMs || (current && (!this.open || now - lc.at <= this.pauseMs)));
+      if (late && m.phaseId === lc.id && pl.id !== lc.winnerId && !lc.penalized.has(pl.id)) {
         const t = this.p(m.owner);
         const ok = t && !t.locked && Number.isInteger(m.idx) && m.idx >= 0 && m.idx < t.slots.length &&
           (t.slots[m.idx] || (m.owner === lc.owner && m.idx === lc.idx));
@@ -534,6 +571,8 @@ class Game {
     }
     if (now > ph.deadline) return { error: 'Too late!' };
     if (ph.gives.some((g) => g.attackerId === pl.id)) return { error: 'Give a card first!' };
+    // open window: your hands are full while you hold a drawn card or use a power
+    if (pl.id === this.activeId && this.turn && ['choose', 'power', 'queen'].includes(this.turn.step)) return { error: 'Finish your move first' };
     const t = this.look(m.owner, m.idx, m.ver); if (t.err) return { error: t.err };
     const failKey = `${pl.id}:${m.owner}:${m.idx}:${t.s.ver}`;
     if (ph.failed.has(failKey)) return { error: 'You already tried that card' };
@@ -563,7 +602,7 @@ class Game {
       this.addLog(`${pl.name} matched ${t.pl.name}'s ${card.rank}!`, 'good');
       this.fx('match', { pid: pl.id, owner: t.pl.id, idx: m.idx, card });
       t.pl.reserved.add(m.idx);
-      const g = { attackerId: pl.id, owner: t.pl.id, idx: m.idx, due: Math.max(ph.deadline, now + this.giveMs) };
+      const g = { attackerId: pl.id, owner: t.pl.id, idx: m.idx, due: this.open ? now + this.giveMs : Math.max(ph.deadline, now + this.giveMs) };
       ph.gives.push(g);
       const mine = this.occupied(pl);
       if (mine.length === 1) this.doGive(g, mine[0]); // only one card: no choice to make
@@ -573,6 +612,7 @@ class Game {
       if (this.autoCaboPending == null) ph.open = false; // window keeps running only for the last-card rule
       this.maybeAdvance();
     }
+    if (this.open) this.fixActive();
   }
 
   act_give(pl, m) {
@@ -583,6 +623,7 @@ class Game {
     const s = this.look(pl.id, m.idx, m.ver, true); if (s.err) return { error: s.err };
     this.doGive(g, m.idx);
     this.maybeAdvance();
+    if (this.open) this.fixActive();
   }
 
   autoGive(g) {
@@ -644,7 +685,7 @@ class Game {
       else if (turn.step === 'power' || turn.step === 'queen') turn.step = 'choose';
     }
     return {
-      gameId: this.gameId, status: this.status, mode: this.mode, now, you: pid, reveals,
+      gameId: this.gameId, status: this.status, mode: this.mode, open: this.open, now, you: pid, reveals,
       players: this.players.map((pl) => ({
         id: pl.id, name: pl.name, isBot: pl.isBot, connected: pl.connected, locked: pl.locked,
         caller: pl.caller, exhausted: pl.exhausted, ready: pl.ready, viewed: pl.viewed, count: this.count(pl),
@@ -654,7 +695,10 @@ class Game {
       activeId: this.activeId, turn,
       hand: active ? this.hand : null, handHeld: !!this.hand,
       phase: ph && {
-        id: ph.id, deadline: ph.deadline, open: ph.open, matched: ph.matched, winnerId: ph.winnerId,
+        id: ph.id, deadline: ph.deadline === Infinity ? null : ph.deadline, open: ph.open, matched: ph.matched, winnerId: ph.winnerId,
+        minUntil: ph.minUntil, ref: ph.ref && ph.ref.rank,
+        // open window: until when a tap after someone else won the race still costs a penalty
+        lateUntil: this.open && this.lastClosed && this.lastClosed.id === ph.id ? this.lastClosed.at + this.pauseMs : null,
         matches: ph.matches, gives: ph.gives.map((g) => ({ attackerId: g.attackerId, owner: g.owner, idx: g.idx, due: g.due })),
       },
       viewDeadline: this.status === 'INITIAL_VIEWING' ? this.viewDeadline : null,

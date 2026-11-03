@@ -328,16 +328,69 @@ const tests = {
     assert.ok(g.integrity());
     g.destroy();
   },
+  'open window: play goes on and the last discard stays matchable until the next one'() {
+    const g = rig('MD', G4, { open: true, minOpenMs: 0, turnBeatMs: 0, deckTop: ['9D', '3D'] });
+    ok(g.handle('a', { a: 'draw' }));
+    ok(g.handle('a', { a: 'swap', ...tgt(g, 'a', 0) })); // the AS goes on the pile
+    assert.strictEqual(g.activeId, 'b', 'no pause: next turn at once');
+    assert.notStrictEqual(g.status, 'MATCHING_WINDOW');
+    const ph = g.phase.id;
+    ok(match(g, 'd', 'd', 0)); // Dan matches his AH during Ben's turn
+    assert.strictEqual(sl(g, 'd', 0), null);
+    ok(g.handle('b', { a: 'draw' })); // the 9D lands on the pile: the Aces window is over
+    assert.notStrictEqual(g.phase.id, ph);
+    assert.ok(g.handle('c', { a: 'match', phaseId: ph, ...tgt(g, 'a', 1), id: 'old' }).error);
+    assert.ok(g.integrity());
+    g.destroy();
+  },
+  'open window: the next draw waits so everyone gets a few seconds'() {
+    const g = rig('FF', G4, { open: true, deckTop: ['3D'] });
+    ok(g.handle('a', { a: 'draw' }));
+    ok(g.handle('a', { a: 'swap', ...tgt(g, 'a', 0) }));
+    assert.match(g.handle('b', { a: 'draw' }).error, /match/);
+    g.phase.minUntil = 0;
+    ok(g.handle('b', { a: 'draw' }));
+    g.destroy();
+  },
+  'open window: spy on a card, then match it'() {
+    const g = rig('FF', [['AS', '2S', '3S', '4S'], ['5S', '6S', '7S', '8S'], ['9S', '10S', 'JS', 'QS'], ['AH', '2H', '3H', '4H']], { open: true, minOpenMs: 0, turnBeatMs: 0, deckTop: ['9D'] });
+    ok(g.handle('a', { a: 'draw' })); // a 9 goes on the pile; Ann uses its power straight away
+    assert.strictEqual(g.turn.step, 'power');
+    assert.match(match(g, 'a', 'a', 0).error, /Finish your move/);
+    ok(g.handle('a', { a: 'target', ...tgt(g, 'c', 0) })); // she sees Cat's 9S
+    ok(match(g, 'a', 'c', 0)); // ...and it still matches the 9 on the pile
+    assert.strictEqual(g.discard[g.discard.length - 1].id, '9S');
+    const give = g.phase.gives.find((x) => x.attackerId === 'a');
+    assert.ok(give, 'Ann owes Cat a card');
+    ok(g.handle('a', { a: 'give', ...tgt(g, 'a', 1) }));
+    assert.ok(sl(g, 'c', 0), 'gap filled');
+    assert.ok(g.integrity());
+    g.destroy();
+  },
+  'open window: holding a drawn card blocks matching; matching away your last card ends your turn'() {
+    const g = rig('MD', [['5D', '2S', '3S', '4S'], ['5H', null, null, null], ['9S', '10S', 'JS', 'QS'], ['AH', '2H', '3H', '4H']], { open: true, minOpenMs: 0, turnBeatMs: 0, deckTop: ['3D', '2D'] });
+    ok(g.handle('a', { a: 'draw' }));
+    ok(g.handle('a', { a: 'swap', ...tgt(g, 'a', 0) })); // the 5D goes on the pile, Ben's turn
+    assert.strictEqual(g.activeId, 'b');
+    ok(match(g, 'b', 'b', 0)); // Ben matches his only card
+    assert.ok(g.p('b').locked, 'out of cards');
+    assert.strictEqual(g.caboCaller, 'b', 'automatic CABO');
+    assert.strictEqual(g.activeId, 'c', 'his turn is over');
+    ok(g.handle('c', { a: 'draw' }));
+    assert.match(match(g, 'c', 'a', 1).error, /Finish your move/, 'hands full while holding a drawn card');
+    assert.ok(g.integrity());
+    g.destroy();
+  },
   async 'bots play a full game to completion with integrity'() {
-    for (const mode of ['FF', 'MD']) {
-      const g = new Game(P.map((p) => ({ ...p, isBot: true })), mode, { matchMs: 60, giveMs: 60, pauseMs: 0 });
+    for (const [mode, open] of [['FF', false], ['MD', false], ['FF', true], ['MD', true]]) {
+      const g = new Game(P.map((p) => ({ ...p, isBot: true })), mode, { matchMs: 60, giveMs: 60, pauseMs: 0, open, minOpenMs: 20, turnBeatMs: 20 });
       const bots = P.map((p, i) => new Bot(g, p.id, ['easy', 'medium', 'hard', 'hard'][i]));
       bots.forEach((b) => { b.poke = function () { if (!this.timer && !g.dead) this.timer = setTimeout(() => { this.timer = null; this.think(); }, 5); }; });
       g.onUpdate = () => { assert.ok(g.integrity(), 'integrity'); bots.forEach((b) => b.poke()); };
       bots.forEach((b) => b.poke());
       const t0 = Date.now();
       while (g.status !== 'GAME_OVER' && Date.now() - t0 < 60000) await sleep(20);
-      assert.strictEqual(g.status, 'GAME_OVER', mode + ' finished');
+      assert.strictEqual(g.status, 'GAME_OVER', mode + (open ? ' open' : '') + ' finished');
       bots.forEach((b) => b.destroy()); g.destroy();
     }
   },
@@ -345,7 +398,7 @@ const tests = {
   async 'any table size from 2 to 6 players plays to the end'() {
     for (const n of [2, 3, 5, 6]) {
       const ps = Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i, isBot: true }));
-      const g = new Game(ps, n % 2 ? 'MD' : 'FF', { matchMs: 60, giveMs: 60, pauseMs: 0 });
+      const g = new Game(ps, n % 2 ? 'MD' : 'FF', { matchMs: 60, giveMs: 60, pauseMs: 0, open: n > 3, minOpenMs: 20, turnBeatMs: 20 });
       assert.strictEqual(g.deck.length, 52 - 4 * n, `${n} players: 4 cards each`);
       const bots = ps.map((p) => new Bot(g, p.id, 'hard'));
       bots.forEach((b) => { b.poke = function () { if (!this.timer && !g.dead) this.timer = setTimeout(() => { this.timer = null; this.think(); }, 5); }; });

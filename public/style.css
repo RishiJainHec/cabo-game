@@ -973,3 +973,13 @@ body.powering .seat.active .seat-head { border-color: var(--violet); }
   .table3 .center .splash { bottom: calc(8px + var(--act-h) / 2); }
 }
 @keyframes splash { 0% { scale: 1.7; rotate: -10deg; opacity: 0; } 18% { scale: 1; rotate: -4deg; opacity: 1; } 72% { scale: 1; opacity: 1; } 100% { scale: .85; rotate: -4deg; opacity: 0; } }
+
+/* ---------- open window: matching runs alongside play ---------- */
+/* the top discard glows while it can still be matched; cards stay calm but are tappable */
+body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yellow), 0 0 26px var(--yellow); animation: livepile 1.6s ease-in-out infinite; }
+@keyframes livepile { 50% { box-shadow: 0 0 0 4px var(--yellow), 0 0 40px var(--yellow); } }
+.slot.tappable { cursor: pointer; }
+.slot.tappable:hover .card { transform: translateY(-4px) scale(1.04); }
+.slot.tappable.up:hover .card { transform: rotateY(180deg) translateY(-4px) scale(1.04); }
+.matchcall.soft { font-size: 18px; animation: none; opacity: .9; }
+.matchcall.soft b { font-size: 24px; }
