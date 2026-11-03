@@ -27,11 +27,14 @@
         <div class="d-key hidden"></div>
         <div class="d-burst"><span>CABO!</span></div>
       </div>
-      <div class="d-foot"><div class="d-dots">${'<span></span>'.repeat(STEPS)}</div>
+      <div class="d-foot">
+        <div class="d-nav">
+          <button class="d-arrow" data-do="demoPrev" title="Previous step (← key)" aria-label="Previous step" disabled>←</button>
+          <div class="d-dots">${'<span></span>'.repeat(STEPS)}</div>
+          <button class="d-arrow" data-do="demoNext" title="Next step (→ key)" aria-label="Next step">→</button>
+        </div>
         <div class="row">
-          <button class="btn small white" data-do="demoPrev" disabled>Previous</button>
           <button class="btn small white" data-do="demoPause">Pause</button>
-          <button class="btn small white" data-do="demoNext">Next</button>
           <button class="btn small white" data-do="demoReplay">Replay</button>
           <button class="btn small white" data-do="rulesText">Full rules</button>
         </div></div>`;

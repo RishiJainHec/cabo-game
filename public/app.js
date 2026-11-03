@@ -840,6 +840,11 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && document.activeElement === $('#codeIn')) $('[data-do=join]').click();
   else if (e.key === 'Enter' && document.activeElement === $('#nameIn')) $('[data-do=create]').click();
   if (e.key === 'Escape') closeModal();
+  // How to play: the arrow keys step through the demo
+  if ($('#modal').dataset.kind === 'demo' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    const b = $(e.key === 'ArrowLeft' ? '[data-do=demoPrev]' : '[data-do=demoNext]');
+    if (b && !b.disabled) { e.preventDefault(); b.click(); }
+  }
 });
 
 function clickSlot(el) {

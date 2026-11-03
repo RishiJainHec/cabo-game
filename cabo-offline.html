@@ -643,8 +643,17 @@ body.matching .slot.elig .face { box-shadow: 0 0 0 3px var(--yellow), 0 0 18px v
 .d-burst.show { opacity: 1; background: radial-gradient(circle, rgba(255, 59, 92, .45), transparent 70%); }
 .d-burst.show span { animation: slam .6s cubic-bezier(.3, 1.6, .5, 1) both; }
 .d-total { position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); white-space: nowrap; background: var(--lime); border: 2px solid var(--ink); border-radius: 99px; padding: 2px 10px; font-weight: 700; font-size: 13px; animation: popin .4s both; z-index: 2; }
-.d-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.d-foot .row { display: flex; gap: 8px; }
+.d-foot { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.d-foot .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+/* previous / next: big arrows on their own row, with the progress dots between them */
+.d-nav { display: flex; align-items: center; gap: 16px; }
+.d-arrow {
+  width: 48px; height: 48px; border: 3px solid var(--ink); border-radius: 50%; background: var(--yellow); color: var(--ink);
+  font-size: 24px; font-weight: 900; line-height: 1; box-shadow: 3px 3px 0 var(--ink); transition: transform .15s, box-shadow .15s;
+}
+.d-arrow:hover:not(:disabled) { transform: translateY(-2px) scale(1.06); box-shadow: 4px 5px 0 var(--ink); }
+.d-arrow:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+.d-arrow:disabled { opacity: .35; cursor: default; }
 .d-dots { display: flex; gap: 6px; }
 .d-dots span { width: 10px; height: 10px; border-radius: 50%; background: #e3d8c0; border: 2px solid var(--ink); transition: background .3s; }
 .d-dots span.on { background: var(--pink); }
@@ -3183,6 +3192,11 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && document.activeElement === $('#codeIn')) $('[data-do=join]').click();
   else if (e.key === 'Enter' && document.activeElement === $('#nameIn')) $('[data-do=create]').click();
   if (e.key === 'Escape') closeModal();
+  // How to play: the arrow keys step through the demo
+  if ($('#modal').dataset.kind === 'demo' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    const b = $(e.key === 'ArrowLeft' ? '[data-do=demoPrev]' : '[data-do=demoNext]');
+    if (b && !b.disabled) { e.preventDefault(); b.click(); }
+  }
 });
 
 function clickSlot(el) {
@@ -3738,11 +3752,14 @@ requestAnimationFrame(frame);
         <div class="d-key hidden"></div>
         <div class="d-burst"><span>CABO!</span></div>
       </div>
-      <div class="d-foot"><div class="d-dots">${'<span></span>'.repeat(STEPS)}</div>
+      <div class="d-foot">
+        <div class="d-nav">
+          <button class="d-arrow" data-do="demoPrev" title="Previous step (← key)" aria-label="Previous step" disabled>←</button>
+          <div class="d-dots">${'<span></span>'.repeat(STEPS)}</div>
+          <button class="d-arrow" data-do="demoNext" title="Next step (→ key)" aria-label="Next step">→</button>
+        </div>
         <div class="row">
-          <button class="btn small white" data-do="demoPrev" disabled>Previous</button>
           <button class="btn small white" data-do="demoPause">Pause</button>
-          <button class="btn small white" data-do="demoNext">Next</button>
           <button class="btn small white" data-do="demoReplay">Replay</button>
           <button class="btn small white" data-do="rulesText">Full rules</button>
         </div></div>`;
