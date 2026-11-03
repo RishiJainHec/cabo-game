@@ -33,6 +33,7 @@ class Game {
     this.open = !!opts.open;
     this.minOpenMs = opts.minOpenMs ?? 3000; // open window: the next draw waits until a discard is this old
     this.turnBeatMs = opts.turnBeatMs ?? 2000; // ...and at least this long after a turn starts
+    this.lastCallMs = opts.lastCallMs ?? 3000; // open window: matching time after the final turn, before scoring
     this.matchMs = opts.matchMs ?? 5000;   // fixed matching window
     this.giveMs = opts.giveMs ?? 4000;     // time to choose a card to hand over after an opponent match
     this.viewPhaseMs = opts.viewPhaseMs ?? 90000; // AFK fallback; normally starts once everyone is ready
@@ -134,6 +135,7 @@ class Game {
     let next = Infinity;
     if (this.status === 'INITIAL_VIEWING') next = this.viewDeadline;
     if (this.status === 'RESOLVING') next = this.holdUntil;
+    if (this.status === 'LAST_CALL') next = this.lastCallUntil;
     if (this.phase) {
       if (this.phase.open) next = Math.min(next, this.phase.deadline);
       for (const g of this.phase.gives) next = Math.min(next, g.due);
@@ -159,6 +161,9 @@ class Game {
       this.beginTurns();
     } else if (this.status === 'RESOLVING' && now >= this.holdUntil) {
       this.advance();
+    } else if (this.status === 'LAST_CALL') {
+      // scores once the time is up and nobody still owes a card from a match
+      if (now >= this.lastCallUntil && !(this.phase && this.phase.gives.length)) this.endGame();
     } else {
       this.maybeAdvance();
     }
@@ -283,6 +288,14 @@ class Game {
     while (this.queue.length) {
       const id = this.queue.shift();
       if (!this.p(id).locked) return this.startTurn(id);
+    }
+    // Open window: the final discard gets the same few seconds to be matched as every other one
+    // (there's no next turn to wait for), then the scores come up.
+    if (this.open && this.phase && this.lastCallMs > 0) {
+      this.status = 'LAST_CALL';
+      this.lastCallUntil = Date.now() + this.lastCallMs;
+      if (this.turn) this.turn.step = 'done'; // the last player's move is over, so they can match too
+      return;
     }
     this.endGame();
   }

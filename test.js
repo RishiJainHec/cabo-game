@@ -381,9 +381,24 @@ const tests = {
     assert.ok(g.integrity());
     g.destroy();
   },
+  async 'open window: after the final turn the last discard can still be matched, then scores'() {
+    const grids = [['AS', '2S', '3S', '4S'], ['5S', '6S', '7S', '8S'], ['9S', '10S', 'JS', 'QS'], ['KH', 'KD', '3H', '4H']];
+    const g = rig('FF', grids, { open: true, minOpenMs: 0, turnBeatMs: 0, lastCallMs: 150, deckTop: ['2D', '3D', '4D'] });
+    ok(g.handle('a', { a: 'cabo' }));
+    for (const id of ['b', 'c']) { ok(g.handle(id, { a: 'draw' })); ok(g.handle(id, { a: 'swap', ...tgt(g, id, 0) })); }
+    ok(g.handle('d', { a: 'draw' }));
+    ok(g.handle('d', { a: 'swap', ...tgt(g, 'd', 0) })); // the final turn puts a King on the pile
+    assert.strictEqual(g.status, 'LAST_CALL', 'no scores yet');
+    ok(match(g, 'd', 'd', 1)); // Dan still gets to throw in the King he knew about
+    assert.strictEqual(sl(g, 'd', 1), null);
+    await sleep(250);
+    assert.strictEqual(g.status, 'GAME_OVER');
+    assert.ok(g.integrity());
+    g.destroy();
+  },
   async 'bots play a full game to completion with integrity'() {
     for (const [mode, open] of [['FF', false], ['MD', false], ['FF', true], ['MD', true]]) {
-      const g = new Game(P.map((p) => ({ ...p, isBot: true })), mode, { matchMs: 60, giveMs: 60, pauseMs: 0, open, minOpenMs: 20, turnBeatMs: 20 });
+      const g = new Game(P.map((p) => ({ ...p, isBot: true })), mode, { matchMs: 60, giveMs: 60, pauseMs: 0, open, minOpenMs: 20, turnBeatMs: 20, lastCallMs: 20 });
       const bots = P.map((p, i) => new Bot(g, p.id, ['easy', 'medium', 'hard', 'hard'][i]));
       bots.forEach((b) => { b.poke = function () { if (!this.timer && !g.dead) this.timer = setTimeout(() => { this.timer = null; this.think(); }, 5); }; });
       g.onUpdate = () => { assert.ok(g.integrity(), 'integrity'); bots.forEach((b) => b.poke()); };
@@ -398,7 +413,7 @@ const tests = {
   async 'any table size from 2 to 6 players plays to the end'() {
     for (const n of [2, 3, 5, 6]) {
       const ps = Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i, isBot: true }));
-      const g = new Game(ps, n % 2 ? 'MD' : 'FF', { matchMs: 60, giveMs: 60, pauseMs: 0, open: n > 3, minOpenMs: 20, turnBeatMs: 20 });
+      const g = new Game(ps, n % 2 ? 'MD' : 'FF', { matchMs: 60, giveMs: 60, pauseMs: 0, open: n > 3, minOpenMs: 20, turnBeatMs: 20, lastCallMs: 20 });
       assert.strictEqual(g.deck.length, 52 - 4 * n, `${n} players: 4 cards each`);
       const bots = ps.map((p) => new Bot(g, p.id, 'hard'));
       bots.forEach((b) => { b.poke = function () { if (!this.timer && !g.dead) this.timer = setTimeout(() => { this.timer = null; this.think(); }, 5); }; });

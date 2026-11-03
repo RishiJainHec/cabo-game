@@ -374,7 +374,7 @@ function renderLobby() {
     `<button class="lvl ${V.level === k ? 'on' : ''}" data-do="level" data-level="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
   setHTML($('#lbModes'), `<h3 style="margin-bottom:8px">Game mode ${host ? '' : '<span class="muted">(host picks)</span>'}</h3>
     <div class="modes">${modes}</div>
-    <div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>`);
+    ${V.players.some((p) => p.isBot) ? `<div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>` : ''}`);
   setHTML($('#lbActions'), `<div class="lobby-actions">
       ${host
         ? `<button class="btn pink big" data-do="start" ${full && allReady ? '' : 'disabled'}>Start game</button>`
@@ -638,6 +638,8 @@ function renderActions() {
   } else if (v.phase && v.phase.gives.some((g) => g.attackerId === v.you)) {
     const give = v.phase.gives.find((g) => g.attackerId === v.you);
     h = cap(`Give ${esc(nameOf(give.owner))} one of your cards`);
+  } else if (v.status === 'LAST_CALL') {
+    // a quiet few seconds to match the final discard; only the glowing pile says so
   } else if (v.phase && !v.open) {
     if (v.mode === 'FF' && v.phase.matched) h = cap(`${esc(nameOf(v.phase.winnerId))} got it`);
     else if (!me.locked) h = `<div class="matchcall">tap ${/^(A|8)$/.test(v.discardTop.rank) ? 'an' : 'a'} <b>${v.discardTop.rank}</b></div>`;
