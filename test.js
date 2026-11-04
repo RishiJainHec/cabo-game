@@ -245,6 +245,24 @@ const tests = {
       g.destroy();
     }
   },
+  'CABO caller who is not the lowest gets +10 (a tie or an automatic CABO does not)'() {
+    const score = (grids, caller, auto = false) => {
+      const g = rig('FF', grids);
+      g.p(caller).caller = true;
+      if (auto) g.p(caller).autoCabo = true;
+      g.endGame();
+      const r = g.results.players.find((x) => x.id === caller);
+      g.destroy();
+      return r;
+    };
+    const G = (a) => [a, ['5S', '6S', '7S', '8S'], ['9S', '10S', 'JS', 'QS'], ['AH', '2H', '3H', '4H']]; // Dan has 8
+    const miss = score(G(['2S', '3S', '4S', '5H']), 'a'); // Ann 14 vs Dan 8
+    assert.strictEqual(miss.total, 24);
+    assert.strictEqual(miss.missed, 10);
+    assert.strictEqual(score(G(['AS', '2C', '3S', '4S']), 'a').total, 8, 'tied for lowest: no penalty');
+    assert.strictEqual(score(G(['AS', '2C', '3C', '4C']), 'a').total, 8, 'Ann -1+2+3+4=8, tie');
+    assert.strictEqual(score(G(['2S', '3S', '4S', '5H']), 'a', true).total, 14, 'automatic CABO: no penalty');
+  },
   'duplicate action id has no second effect'() {
     const g = rig('MD', G4, { deckTop: ['5D'] });
     ok(g.handle('a', { a: 'draw' }));

@@ -1133,3 +1133,7 @@ body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yell
 .leadcrown .tcrown { display: block; width: 22px; height: 15px; rotate: -12deg; filter: drop-shadow(0 0 4px rgba(255, 210, 63, .8)); }
 @keyframes leadcrown { from { translate: 0 -24px; scale: .3; opacity: 0; } to { translate: 0 0; scale: 1; opacity: 1; } }
 @keyframes leadbob { 50% { translate: 0 -2px; } }
+
+/* a CABO call that didn't pay off */
+.tagc.miss { background: var(--ink); color: #ff8a9c; }
+.cabomiss { color: var(--red); font-weight: 800; }

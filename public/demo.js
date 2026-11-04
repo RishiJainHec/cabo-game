@@ -245,7 +245,7 @@
       q('.d-burst').classList.add('show');
       await wait(2000);
       q('.d-burst').classList.remove('show');
-      sub('Everyone else gets one last turn, then the round ends.');
+      sub('Everyone else gets one last turn. If anyone ends lower than you, you get +10!');
       focus();
       await wait(4000);
 

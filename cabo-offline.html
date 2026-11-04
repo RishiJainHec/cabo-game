@@ -1143,6 +1143,10 @@ body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yell
 @keyframes leadcrown { from { translate: 0 -24px; scale: .3; opacity: 0; } to { translate: 0 0; scale: 1; opacity: 1; } }
 @keyframes leadbob { 50% { translate: 0 -2px; } }
 
+/* a CABO call that didn't pay off */
+.tagc.miss { background: var(--ink); color: #ff8a9c; }
+.cabomiss { color: var(--red); font-weight: 800; }
+
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='14' y='4' width='72' height='92' rx='12' fill='%23ff4fa3' stroke='%231d0f3f' stroke-width='6'/><circle cx='50' cy='50' r='18' fill='%23ffd23f' stroke='%231d0f3f' stroke-width='5'/></svg>">
 </head>
@@ -1284,6 +1288,7 @@ const POWER = {
   7: 'peekOwn', 8: 'peekOwn', 9: 'peekOpp', 10: 'peekOpp', J: 'blindSwap', Q: 'queen', K: 'kingSwap',
 };
 const GRID = 4; // indices 0-3 = 2x2 grid (2,3 = bottom row); 4+ = penalty area
+const CABO_MISS = 10; // added to a CABO caller who doesn't end with the lowest total
 
 const shuffle = (a) => {
   for (let i = a.length - 1; i > 0; i--) {
@@ -1529,6 +1534,7 @@ class Game {
     if (this.autoCaboPending != null && this.caboCaller == null) {
       const c = this.p(this.autoCaboPending);
       c.caller = true;
+      c.autoCabo = true; // ran out of cards: not a choice, so never a miss
       this.caboCaller = c.id;
       this.queue = this.buildQueue(this.activeId);
       this.addLog(`${c.name} ran out of cards — automatic CABO! Final turns begin.`, 'cabo');
@@ -1588,6 +1594,15 @@ class Game {
       const total = four ? -4 : cards.reduce((t, c) => t + VALUE[c.card.rank], 0);
       return { id: pl.id, name: pl.name, cards, four, total, caller: pl.caller };
     });
+    // Calling CABO is a bet that you're the lowest. Miss it (someone ends strictly lower) and it
+    // costs you an extra CABO_MISS points. A tie for the lowest still counts as making it.
+    const caller = res.find((r) => r.caller && !this.p(r.id).autoCabo);
+    if (caller && res.some((r) => r !== caller && r.total < caller.total)) {
+      caller.cardsTotal = caller.total;
+      caller.missed = CABO_MISS;
+      caller.total += CABO_MISS;
+      this.addLog(`${caller.name} called CABO but wasn't the lowest: +${CABO_MISS} points!`, 'bad');
+    }
     res.sort((a, b) => a.total - b.total);
     res.forEach((r, i) => { r.place = i > 0 && r.total === res[i - 1].total ? res[i - 1].place : i + 1; });
     const best = res[0].total;
@@ -3276,7 +3291,7 @@ function renderActions() {
 function renderCheat() {
   const p = V && V.turn && V.activeId === V.you && POWER[powerRank()];
   setHTML($('#cheatBody'), CHEAT.map(([r, k]) => `<div class="crow ${p === k ? 'on' : ''}"><b>${r}</b><span>${TIP[k]}</span></div>`).join('') +
-    '<div class="cnote">Match = same rank<br>Wrong match = +1 card<br>Lowest total wins · A = −1</div>');
+    '<div class="cnote">Match = same rank<br>Wrong match = +1 card<br>CABO but not lowest = +10<br>Lowest total wins · A = −1</div>');
   // closed by default; until it's been opened once, the tab wiggles with a "Card powers!" bubble
   const open = localStorage.getItem('cabo.cheat') === '1';
   $('#cheat').classList.toggle('open', open);
@@ -3421,12 +3436,14 @@ function showResults() {
     const cards = p.cards.map((c) => `<div class="mcard ${c.card.suit === 'H' || c.card.suit === 'D' ? 'red' : ''} ${c.penalty ? 'pen' : ''}">
         <div class="mf">${c.card.rank}<i>${SUIT[c.card.suit]}</i></div><div class="mv">${fmt(val(c.card.rank))}</div></div>`).join('');
     const sum = p.four ? 'Four of a kind → <b>−4</b>'
-      : p.cards.length ? p.cards.map((c) => (val(c.card.rank) < 0 ? `(${fmt(val(c.card.rank))})` : val(c.card.rank))).join(' + ') + ` = <b>${fmt(p.total)}</b>`
+      : p.cards.length ? p.cards.map((c) => (val(c.card.rank) < 0 ? `(${fmt(val(c.card.rank))})` : val(c.card.rank))).join(' + ') + ` = <b>${fmt(p.missed ? p.cardsTotal : p.total)}</b>`
       : 'No cards left → <b>0</b>';
+    // called CABO but someone was lower: the extra points, spelled out
+    const miss = p.missed ? ` · <span class="cabomiss">+${p.missed} CABO miss</span> → <b>${fmt(p.total)}</b>` : '';
     return `<div class="score-row ${r.winners.includes(p.id) ? 'win' : ''}" style="animation-delay:${i * 120}ms">
       <div class="place">${ord(p.place)}</div>
-      <div><div class="nm">${esc(p.name)}${p.id === V.you ? ' (you)' : ''}${p.caller ? '<span class="tagc">CALLED CABO</span>' : ''}${p.four ? '<span class="four">FOUR OF A KIND</span>' : ''}</div>
-        <div class="mini-cards">${cards || '<span class="sum">—</span>'}</div><div class="sum">${sum}</div></div>
+      <div><div class="nm">${esc(p.name)}${p.id === V.you ? ' (you)' : ''}${p.caller ? (p.missed ? '<span class="tagc miss">CABO MISS</span>' : '<span class="tagc">CALLED CABO</span>') : ''}${p.four ? '<span class="four">FOUR OF A KIND</span>' : ''}</div>
+        <div class="mini-cards">${cards || '<span class="sum">—</span>'}</div><div class="sum">${sum}${miss}</div></div>
       <div class="total">${fmt(p.total)}<small>points</small></div></div>`;
   }).join('');
   const title = r.tie ? `It's a tie!` : r.winners[0] === V.you ? 'You win!' : `${esc(nameOf(r.winners[0]))} wins!`;
@@ -3461,6 +3478,7 @@ Match your own card and it's gone. Match an opponent's card and you hand them on
 Wrong card = a hidden <b>penalty card</b>.</p>
 <ul><li><b>Fastest Finger:</b> only the first match counts. Losing the race = penalty.</li><li><b>Multiple Discard:</b> keep matching until the next card lands.</li></ul>
 <h3>CABO</h3><p>At the start of your turn, call CABO instead of drawing. Your cards lock and everyone else gets one final turn.
+If anyone ends with a lower total than you, you get <b>+10 points</b> (a tie for lowest is fine).
 Run out of cards completely and CABO is called for you.</p>
 <h3>Scoring</h3><p>Add up your cards (J=11, Q=12, K=13, A=−1), penalties included. Four of a kind with no penalty cards scores <b>−4</b>. Lowest wins; ties are ties.</p></div>`;
 
@@ -4358,7 +4376,7 @@ requestAnimationFrame(frame);
       q('.d-burst').classList.add('show');
       await wait(2000);
       q('.d-burst').classList.remove('show');
-      sub('Everyone else gets one last turn, then the round ends.');
+      sub('Everyone else gets one last turn. If anyone ends lower than you, you get +10!');
       focus();
       await wait(4000);
 

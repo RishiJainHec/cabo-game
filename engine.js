@@ -11,6 +11,7 @@ const POWER = {
   7: 'peekOwn', 8: 'peekOwn', 9: 'peekOpp', 10: 'peekOpp', J: 'blindSwap', Q: 'queen', K: 'kingSwap',
 };
 const GRID = 4; // indices 0-3 = 2x2 grid (2,3 = bottom row); 4+ = penalty area
+const CABO_MISS = 10; // added to a CABO caller who doesn't end with the lowest total
 
 const shuffle = (a) => {
   for (let i = a.length - 1; i > 0; i--) {
@@ -256,6 +257,7 @@ class Game {
     if (this.autoCaboPending != null && this.caboCaller == null) {
       const c = this.p(this.autoCaboPending);
       c.caller = true;
+      c.autoCabo = true; // ran out of cards: not a choice, so never a miss
       this.caboCaller = c.id;
       this.queue = this.buildQueue(this.activeId);
       this.addLog(`${c.name} ran out of cards — automatic CABO! Final turns begin.`, 'cabo');
@@ -315,6 +317,15 @@ class Game {
       const total = four ? -4 : cards.reduce((t, c) => t + VALUE[c.card.rank], 0);
       return { id: pl.id, name: pl.name, cards, four, total, caller: pl.caller };
     });
+    // Calling CABO is a bet that you're the lowest. Miss it (someone ends strictly lower) and it
+    // costs you an extra CABO_MISS points. A tie for the lowest still counts as making it.
+    const caller = res.find((r) => r.caller && !this.p(r.id).autoCabo);
+    if (caller && res.some((r) => r !== caller && r.total < caller.total)) {
+      caller.cardsTotal = caller.total;
+      caller.missed = CABO_MISS;
+      caller.total += CABO_MISS;
+      this.addLog(`${caller.name} called CABO but wasn't the lowest: +${CABO_MISS} points!`, 'bad');
+    }
     res.sort((a, b) => a.total - b.total);
     res.forEach((r, i) => { r.place = i > 0 && r.total === res[i - 1].total ? res[i - 1].place : i + 1; });
     const best = res[0].total;

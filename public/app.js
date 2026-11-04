@@ -695,7 +695,7 @@ function renderActions() {
 function renderCheat() {
   const p = V && V.turn && V.activeId === V.you && POWER[powerRank()];
   setHTML($('#cheatBody'), CHEAT.map(([r, k]) => `<div class="crow ${p === k ? 'on' : ''}"><b>${r}</b><span>${TIP[k]}</span></div>`).join('') +
-    '<div class="cnote">Match = same rank<br>Wrong match = +1 card<br>Lowest total wins · A = −1</div>');
+    '<div class="cnote">Match = same rank<br>Wrong match = +1 card<br>CABO but not lowest = +10<br>Lowest total wins · A = −1</div>');
   // closed by default; until it's been opened once, the tab wiggles with a "Card powers!" bubble
   const open = localStorage.getItem('cabo.cheat') === '1';
   $('#cheat').classList.toggle('open', open);
@@ -840,12 +840,14 @@ function showResults() {
     const cards = p.cards.map((c) => `<div class="mcard ${c.card.suit === 'H' || c.card.suit === 'D' ? 'red' : ''} ${c.penalty ? 'pen' : ''}">
         <div class="mf">${c.card.rank}<i>${SUIT[c.card.suit]}</i></div><div class="mv">${fmt(val(c.card.rank))}</div></div>`).join('');
     const sum = p.four ? 'Four of a kind → <b>−4</b>'
-      : p.cards.length ? p.cards.map((c) => (val(c.card.rank) < 0 ? `(${fmt(val(c.card.rank))})` : val(c.card.rank))).join(' + ') + ` = <b>${fmt(p.total)}</b>`
+      : p.cards.length ? p.cards.map((c) => (val(c.card.rank) < 0 ? `(${fmt(val(c.card.rank))})` : val(c.card.rank))).join(' + ') + ` = <b>${fmt(p.missed ? p.cardsTotal : p.total)}</b>`
       : 'No cards left → <b>0</b>';
+    // called CABO but someone was lower: the extra points, spelled out
+    const miss = p.missed ? ` · <span class="cabomiss">+${p.missed} CABO miss</span> → <b>${fmt(p.total)}</b>` : '';
     return `<div class="score-row ${r.winners.includes(p.id) ? 'win' : ''}" style="animation-delay:${i * 120}ms">
       <div class="place">${ord(p.place)}</div>
-      <div><div class="nm">${esc(p.name)}${p.id === V.you ? ' (you)' : ''}${p.caller ? '<span class="tagc">CALLED CABO</span>' : ''}${p.four ? '<span class="four">FOUR OF A KIND</span>' : ''}</div>
-        <div class="mini-cards">${cards || '<span class="sum">—</span>'}</div><div class="sum">${sum}</div></div>
+      <div><div class="nm">${esc(p.name)}${p.id === V.you ? ' (you)' : ''}${p.caller ? (p.missed ? '<span class="tagc miss">CABO MISS</span>' : '<span class="tagc">CALLED CABO</span>') : ''}${p.four ? '<span class="four">FOUR OF A KIND</span>' : ''}</div>
+        <div class="mini-cards">${cards || '<span class="sum">—</span>'}</div><div class="sum">${sum}${miss}</div></div>
       <div class="total">${fmt(p.total)}<small>points</small></div></div>`;
   }).join('');
   const title = r.tie ? `It's a tie!` : r.winners[0] === V.you ? 'You win!' : `${esc(nameOf(r.winners[0]))} wins!`;
@@ -880,6 +882,7 @@ Match your own card and it's gone. Match an opponent's card and you hand them on
 Wrong card = a hidden <b>penalty card</b>.</p>
 <ul><li><b>Fastest Finger:</b> only the first match counts. Losing the race = penalty.</li><li><b>Multiple Discard:</b> keep matching until the next card lands.</li></ul>
 <h3>CABO</h3><p>At the start of your turn, call CABO instead of drawing. Your cards lock and everyone else gets one final turn.
+If anyone ends with a lower total than you, you get <b>+10 points</b> (a tie for lowest is fine).
 Run out of cards completely and CABO is called for you.</p>
 <h3>Scoring</h3><p>Add up your cards (J=11, Q=12, K=13, A=−1), penalties included. Four of a kind with no penalty cards scores <b>−4</b>. Lowest wins; ties are ties.</p></div>`;
 
