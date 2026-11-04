@@ -245,11 +245,10 @@ const tests = {
       g.destroy();
     }
   },
-  'CABO caller who is not the lowest gets +10 (a tie or an automatic CABO does not)'() {
-    const score = (grids, caller, auto = false) => {
+  'CABO caller who is not the lowest gets +10 (a tie for lowest does not)'() {
+    const score = (grids, caller) => {
       const g = rig('FF', grids);
       g.p(caller).caller = true;
-      if (auto) g.p(caller).autoCabo = true;
       g.endGame();
       const r = g.results.players.find((x) => x.id === caller);
       g.destroy();
@@ -261,7 +260,8 @@ const tests = {
     assert.strictEqual(miss.missed, 10);
     assert.strictEqual(score(G(['AS', '2C', '3S', '4S']), 'a').total, 8, 'tied for lowest: no penalty');
     assert.strictEqual(score(G(['AS', '2C', '3C', '4C']), 'a').total, 8, 'Ann -1+2+3+4=8, tie');
-    assert.strictEqual(score(G(['2S', '3S', '4S', '5H']), 'a', true).total, 14, 'automatic CABO: no penalty');
+    // out of cards (automatic CABO, total 0) but Dan ends on -1: still a miss
+    assert.strictEqual(score([[null, null, null, null], ['5S', '6S', '7S', '8S'], ['9S', '10S', 'JS', 'QS'], ['AH', null, null, null]], 'a').total, 10);
   },
   'duplicate action id has no second effect'() {
     const g = rig('MD', G4, { deckTop: ['5D'] });

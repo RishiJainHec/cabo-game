@@ -1534,7 +1534,6 @@ class Game {
     if (this.autoCaboPending != null && this.caboCaller == null) {
       const c = this.p(this.autoCaboPending);
       c.caller = true;
-      c.autoCabo = true; // ran out of cards: not a choice, so never a miss
       this.caboCaller = c.id;
       this.queue = this.buildQueue(this.activeId);
       this.addLog(`${c.name} ran out of cards — automatic CABO! Final turns begin.`, 'cabo');
@@ -1595,8 +1594,9 @@ class Game {
       return { id: pl.id, name: pl.name, cards, four, total, caller: pl.caller };
     });
     // Calling CABO is a bet that you're the lowest. Miss it (someone ends strictly lower) and it
-    // costs you an extra CABO_MISS points. A tie for the lowest still counts as making it.
-    const caller = res.find((r) => r.caller && !this.p(r.id).autoCabo);
+    // costs you an extra CABO_MISS points. A tie for the lowest still counts as making it. Running
+    // out of cards calls CABO for you, and the same bet applies.
+    const caller = res.find((r) => r.caller);
     if (caller && res.some((r) => r !== caller && r.total < caller.total)) {
       caller.cardsTotal = caller.total;
       caller.missed = CABO_MISS;
