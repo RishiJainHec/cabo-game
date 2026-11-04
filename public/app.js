@@ -562,7 +562,8 @@ function renderSeat(s, p, me) {
     !p.connected ? '<span class="badge off">offline</span>' : '',
     v.status === 'INITIAL_VIEWING' && p.ready ? '<span class="badge ok">✓</span>' : '',
   ].join('');
-  setHTML(s.head, `${avatar(p.name, colorOf(p.id), 'sm')}<div class="who"><div class="nm">${esc(p.name)}${me ? ' (you)' : ''}</div>
+  const lead = tourLeaders().includes(p.id) ? `<span class="leadcrown" title="Tournament leader">${CROWN}</span>` : '';
+  setHTML(s.head, `${lead}${avatar(p.name, colorOf(p.id), 'sm')}<div class="who"><div class="nm">${esc(p.name)}${me ? ' (you)' : ''}</div>
     <div class="badges">${badges}</div></div>`);
 
   const it = interaction();
@@ -706,6 +707,14 @@ const delta = (n) => (n < 0 ? pts(n) : '+' + n); // a round's points, signed
 const CROWN = '<svg class="tcrown" viewBox="0 0 24 16"><path d="M2 14 L4 3 L9 9 L12 1 L15 9 L20 3 L22 14 Z"/></svg>';
 // Everyone keeps their table colour, even after they've left.
 const tourColor = (id) => { const i = V.players.findIndex((p) => p.id === id); return COLORS[(i < 0 ? V.tour.standings.findIndex((r) => r.id === id) : i) % COLORS.length]; };
+
+// Who wears the crown on the table: whoever leads the tournament (all of them if tied), once at
+// least one round has been scored.
+function tourLeaders() {
+  const T = V && V.tour;
+  if (!T || !T.standings.some((r) => r.last != null)) return [];
+  return T.standings.filter((r) => !r.left && r.place === 1).map((r) => r.id);
+}
 
 // The round chip in the top bar and the running leaderboard on the left (open unless closed by you).
 function renderBoard() {

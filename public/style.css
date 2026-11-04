@@ -1127,3 +1127,9 @@ body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yell
 #tourfx.instant .tq-intro { display: none; }
 #tourfx.instant .pod-col, #tourfx.instant .pod-who, #tourfx.instant .tq-row, #tourfx.instant .tq-title, #tourfx.instant .pod-delta, #tourfx.instant .tq-actions, #tourfx.instant .tcrown { animation-duration: .01s !important; }
 @media (max-height: 760px) { .podium { height: 280px; } .pod1 .pod-col { height: 140px; } .pod2 .pod-col { height: 104px; } .pod3 .pod-col { height: 76px; } .pod-av { width: 52px; height: 52px; font-size: 24px; } .pod1 .pod-av { width: 68px; height: 68px; font-size: 32px; } }
+
+/* tournament: the current leader wears a little crown on their name tag */
+.leadcrown { position: absolute; left: 10px; top: -13px; z-index: 1; pointer-events: none; animation: leadcrown .6s cubic-bezier(.3, 1.8, .5, 1) both, leadbob 2.4s ease-in-out .6s infinite; }
+.leadcrown .tcrown { display: block; width: 22px; height: 15px; rotate: -12deg; filter: drop-shadow(0 0 4px rgba(255, 210, 63, .8)); }
+@keyframes leadcrown { from { translate: 0 -24px; scale: .3; opacity: 0; } to { translate: 0 0; scale: 1; opacity: 1; } }
+@keyframes leadbob { 50% { translate: 0 -2px; } }
