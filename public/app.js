@@ -142,7 +142,7 @@ function show() {
   const scr = !V ? 'home' : V.status === 'LOBBY' ? 'lobby' : 'game';
   for (const id of ['home', 'lobby', 'game']) $('#' + id).classList.toggle('hidden', id !== scr);
   if (scr === 'home') renderHome();
-  if (scr !== 'game') resetTable();
+  if (scr !== 'game') { resetTable(); closeTour(); }
   if (scr === 'lobby') renderLobby();
   if (scr === 'game') renderGame();
 }
@@ -155,6 +155,7 @@ function resetTable() {
   cancelHold();
   Object.assign(local, { sel: null, queenSwap: false, clicked: new Set(), turnKey: '', resultsShown: false, gameId: null });
   closeModal('results');
+  closeTour(); // a tournament's next round has begun
 }
 
 function renderHome() {
@@ -374,14 +375,29 @@ function renderLobby() {
     `<button class="lvl ${V.level === k ? 'on' : ''}" data-do="level" data-level="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
   setHTML($('#lbModes'), `<h3 style="margin-bottom:8px">Game mode ${host ? '' : '<span class="muted">(host picks)</span>'}</h3>
     <div class="modes">${modes}</div>
-    ${V.players.some((p) => p.isBot) ? `<div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>` : ''}`);
+    ${V.players.some((p) => p.isBot) ? `<div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>` : ''}
+    ${tourSetupHTML(host)}`);
   setHTML($('#lbActions'), `<div class="lobby-actions">
       ${host
-        ? `<button class="btn pink big" data-do="start" ${full && allReady ? '' : 'disabled'}>Start game</button>`
+        ? `<button class="btn pink big" data-do="start" ${full && allReady ? '' : 'disabled'}>${V.tourOn ? 'Start tournament' : 'Start game'}</button>`
         : `<button class="btn big ${me.ready ? 'white' : 'lime'}" data-do="ready">${me.ready ? 'Not ready' : "I'm ready"}</button>`}
       <button class="btn white" data-do="leave">Leave</button>
     </div>
     <p class="muted" style="text-align:center;margin:12px 0 0">${!full ? 'Need at least one more player. Share the code or link, or add a bot!' : !allReady ? 'Waiting for everyone to be ready…' : host ? 'Everyone is ready. Hit start!' : 'Waiting for the host to start…'}</p>`);
+}
+
+// Tournament switch: several rounds with the same table, lowest running total wins.
+const TROPHY = `<svg class="trophy" viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4M8 20h8M9.5 17h5"/></svg>`;
+function tourSetupHTML(host) {
+  const rounds = [5, 7, 10].map((n) =>
+    `<button class="lvl ${V.tourRounds === n ? 'on' : ''}" data-do="tourRounds" data-n="${n}" ${host ? '' : 'disabled'}>${n}</button>`).join('');
+  return `<div class="tour-box ${V.tourOn ? 'on' : ''}">
+    <button class="tour-toggle" data-do="tourToggle" ${host ? '' : 'disabled'}>
+      ${TROPHY}<span class="tt-txt"><b>Tournament</b><small>${V.tourOn ? `${V.tourRounds} rounds · lowest total wins` : 'Play several rounds, lowest total wins'}</small></span>
+      <span class="switch"><i></i></span>
+    </button>
+    ${V.tourOn ? `<div class="tour-rounds"><span>Rounds</span><div class="lvl-row">${rounds}</div></div>` : ''}
+  </div>`;
 }
 
 // ---------------- game rendering ----------------
@@ -475,6 +491,7 @@ function renderGame() {
   renderCenter();
   renderActions();
   renderCheat();
+  renderBoard();
 
   fitTable();
 
@@ -486,7 +503,8 @@ function renderGame() {
 
   if (v.status === 'GAME_OVER' && !local.resultsShown) {
     local.resultsShown = true;
-    setTimeout(showResults, 2200);
+    // a tournament shows its podium (or, after the last round, the champion) instead of the round's scores
+    setTimeout(() => { if (V && V.status === 'GAME_OVER') (V.tour ? showTour() : showResults()); }, 2200);
   }}
 
 // Pick the largest card size at which the whole table fits the window, so no cards are ever cut off.
@@ -633,6 +651,10 @@ function renderActions() {
     else if (!me.viewed) h = `${btn('Peek', 'view', 'pink big')}${cap('your bottom two cards, once')}`;
     else if (!me.ready) h = `${btn('Ready', 'viewReady', 'lime big')}${cap('memorise them')}`;
     else h = cap('Waiting for the others…');
+  } else if (v.status === 'GAME_OVER' && v.tour && !v.tour.done) {
+    h = cap(`Round ${v.tour.round + 1} is coming up…`);
+  } else if (v.status === 'GAME_OVER' && v.tour) {
+    h = `<div class="row">${btn('Standings', 'standings', 'pink')}${btn('Last round', 'results', 'white')}</div>`;
   } else if (v.status === 'GAME_OVER') {
     h = `<div class="row">${btn('Scores', 'results', 'white')}${soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink')}</div>`;
   } else if (v.phase && v.phase.gives.some((g) => g.attackerId === v.you)) {
@@ -676,6 +698,121 @@ function renderCheat() {
   $('#cheat').classList.toggle('open', open);
   $('#cheat').classList.toggle('nudge', !open && localStorage.getItem('cabo.cheatSeen') !== '1');
   $('#game').classList.toggle('cheat-open', open);
+}
+
+// ---------------- tournament ----------------
+const pts = (n) => (n < 0 ? '−' + -n : String(n));
+const delta = (n) => (n < 0 ? pts(n) : '+' + n); // a round's points, signed
+const CROWN = '<svg class="tcrown" viewBox="0 0 24 16"><path d="M2 14 L4 3 L9 9 L12 1 L15 9 L20 3 L22 14 Z"/></svg>';
+// Everyone keeps their table colour, even after they've left.
+const tourColor = (id) => { const i = V.players.findIndex((p) => p.id === id); return COLORS[(i < 0 ? V.tour.standings.findIndex((r) => r.id === id) : i) % COLORS.length]; };
+
+// The round chip in the top bar and the running leaderboard on the left (open unless closed by you).
+function renderBoard() {
+  const T = V.tour;
+  $('#tourChip').classList.toggle('hidden', !T);
+  $('#board').classList.toggle('hidden', !T);
+  const open = !!T && localStorage.getItem('cabo.board') !== '0';
+  $('#board').classList.toggle('open', open);
+  $('#game').classList.toggle('board-open', open);
+  if (!T) return;
+  $('#tourChip').textContent = `Round ${T.round} of ${T.rounds}`;
+  setHTML($('#boardHead'), `${TROPHY}<span>Leaderboard</span>`);
+  setHTML($('#boardBody'), T.standings.map((r) => `<div class="brow ${r.id === V.you ? 'me' : ''} ${r.left ? 'gone' : ''}">
+      <span class="bplace p${r.left ? 0 : r.place}">${r.left ? '–' : r.place}</span>
+      <span class="bdot" style="background:${tourColor(r.id)}"></span>
+      <span class="bname">${esc(r.name)}${r.wins ? `<i class="bwins" title="Rounds won">${CROWN}${r.wins}</i>` : ''}</span>
+      <span class="btotal">${pts(r.total)}</span></div>`).join('') +
+    `<div class="cnote">Lowest total after ${T.rounds} rounds wins</div>`);
+}
+
+// Full-screen tournament moments. Between rounds: the top three rise onto a podium, everyone else
+// slides in below, and a bar counts down to the next round. After the last round: a drumroll, the
+// podium builds from third place up, and the champion drops in with a crown and confetti.
+// `instant` re-opens it without the build-up (the Standings button).
+let tourTick = null;
+function closeTour() { clearInterval(tourTick); tourTick = null; $('#tourfx')?.remove(); }
+function showTour(instant = false) {
+  const T = V && V.tour;
+  if (!T || V.status !== 'GAME_OVER') return;
+  closeTour();
+  closeModal();
+  const final = T.done;
+  const live = T.standings.filter((r) => !r.left);
+  const top = live.slice(0, 3);
+  const champs = live.filter((r) => r.place === 1);
+  // when things happen (seconds); the final makes you wait for first place
+  const at = final ? { 3: 1.3, 2: 2.5, 1: 4.6, board: 6.4 } : { 3: 0.3, 2: 0.6, 1: 0.9, board: 1.7 };
+  const podium = [[top[1], 2], [top[0], 1], [top[2], 3]].filter(([r]) => r).map(([r, spot]) => {
+    const d = at[spot];
+    return `<div class="pod pod${spot}" style="--d:${d}s">
+      <div class="pod-who">
+        ${r.place === 1 ? CROWN : ''}
+        <div class="pod-av" style="background:${tourColor(r.id)}">${esc(r.name[0].toUpperCase())}</div>
+        <div class="pod-name">${esc(r.name)}${r.id === V.you ? ' <small>(you)</small>' : ''}</div>
+      </div>
+      <div class="pod-col"><span class="pod-num">${r.place}</span>
+        <b class="pod-total" data-from="${final ? 0 : r.total - (r.last || 0)}" data-to="${r.total}" data-at="${d + 0.45}">${pts(r.total)}</b><small>points</small>
+        ${!final && r.last != null ? `<em class="pod-delta">${delta(r.last)}</em>` : ''}</div>
+    </div>`;
+  }).join('');
+  // everyone below the podium (or, at the end, the whole table with rounds won)
+  const list = (final ? T.standings : T.standings.slice(3)).filter((r) => final || !top.includes(r)).map((r, i) => `
+    <div class="tq-row ${r.id === V.you ? 'me' : ''} ${r.left ? 'gone' : ''}" style="--d:${at.board + i * 0.12}s">
+      <span class="bplace p${r.left ? 0 : r.place}">${r.left ? '–' : r.place}</span>
+      <span class="bdot" style="background:${tourColor(r.id)}"></span>
+      <span class="tq-name">${esc(r.name)}${r.left ? ' <small>left</small>' : ''}</span>
+      ${final ? `<span class="tq-wins">${r.wins ? CROWN.repeat(Math.min(r.wins, 5)) + (r.wins > 5 ? `×${r.wins}` : '') : ''}</span>` : `<span class="tq-delta">${r.last != null ? delta(r.last) : ''}</span>`}
+      <b>${pts(r.total)}</b></div>`).join('');
+  const champName = champs.length > 1 ? champs.map((c) => esc(c.name)).join(' & ') : esc(champs[0] ? champs[0].name : '');
+  const wait = Math.max(0, (T.nextAt || 0) - snow());
+  const el = document.createElement('div');
+  el.id = 'tourfx';
+  el.className = (final ? 'final' : 'between') + (instant ? ' instant' : '');
+  el.innerHTML = `<div class="tq">
+    ${final
+      ? `<div class="tq-intro">And the champion is<span class="dots"><i>.</i><i>.</i><i>.</i></span></div>
+         <div class="tq-title champ" style="--d:${at[1] + 0.7}s">${champs.length > 1 ? 'Co-champions!' : 'Champion!'}<span>${champName}</span></div>`
+      : `<div class="tq-title">Round ${T.round} of ${T.rounds}<span>Standings so far · lowest total leads</span></div>`}
+    <div class="podium">${podium}</div>
+    ${list ? `<div class="tq-list">${list}</div>` : ''}
+    ${final
+      ? `<div class="tq-actions" style="--d:${at.board + 0.6}s">${soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink')}${btn('Last round', 'results', 'white')}${btn('Table', 'closeTour', 'white')}</div>`
+      : `<div class="tq-next" style="--d:${at.board}s"><span>Round ${T.round + 1} starts in <b id="tqSec">${Math.ceil(wait / 1000)}</b></span>
+           <div class="tq-bar"><i style="animation-duration:${wait}ms"></i></div></div>`}
+  </div>`;
+  document.body.appendChild(el);
+
+  // numbers count up as each player lands; sounds follow the build-up
+  const later = (s, fn) => setTimeout(() => el.isConnected && fn(), instant ? 0 : s * 1000);
+  el.querySelectorAll('.pod-total').forEach((b) => {
+    const from = +b.dataset.from, to = +b.dataset.to;
+    if (instant || from === to) return;
+    b.textContent = pts(from);
+    later(+b.dataset.at, () => {
+      const t0 = performance.now();
+      const stepN = (t) => { const k = Math.min(1, (t - t0) / 700); b.textContent = pts(Math.round(from + (to - from) * k)); if (k < 1 && el.isConnected) requestAnimationFrame(stepN); };
+      requestAnimationFrame(stepN);
+    });
+  });
+  if (!instant) {
+    for (const spot of [3, 2, 1]) if (el.querySelector('.pod' + spot)) { later(at[spot], () => sfx.rise()); later(at[spot] + 0.45, () => sfx.land()); }
+    if (final) {
+      later(at[2] + 0.9, () => sfx.drum());
+      later(at[1] + 0.5, () => {
+        sfx.win();
+        el.querySelectorAll('.pod1 .pod-av').forEach((a) => { const [x, y] = center(a); confetti(x, y, 140); });
+        confetti(innerWidth / 2, innerHeight / 4, 120);
+      });
+    }
+  }
+  if (!final) {
+    tourTick = setInterval(() => {
+      const s = $('#tqSec');
+      const left = ((V && V.tour && V.tour.nextAt) || 0) - snow();
+      if (s) s.textContent = Math.max(0, Math.ceil(left / 1000));
+    }, 250);
+  }
 }
 
 // ---------------- results ----------------
@@ -778,13 +915,18 @@ document.addEventListener('click', (e) => {
     case 'demoNext': demoCtl.next(); break;
     case 'demoPrev': demoCtl.prev(); break;
     case 'closeModal': case 'bgClose': closeModal(); break;
-    case 'results': local.resultsShown = true; showResults(); break;
+    case 'results': local.resultsShown = true; closeTour(); showResults(); break;
+    case 'standings': local.resultsShown = true; showTour(true); break;
+    case 'closeTour': closeTour(); break;
+    case 'board': localStorage.setItem('cabo.board', $('#board').classList.contains('open') ? '0' : '1'); renderBoard(); fitTable(); break;
     case 'mute': muted = !muted; localStorage.setItem('cabo.muted', muted ? '1' : '0'); $('#muteBtn').classList.toggle('off', muted); break;
     case 'copy': navigator.clipboard?.writeText(b.dataset.link).then(() => toast('Invite link copied', 'good'), () => toast(b.dataset.link)); break;
     case 'addBot': send({ type: 'addBot' }); break;
     case 'kick': send({ type: 'kick', id: b.dataset.id }); break;
     case 'mode': send({ type: 'setMode', mode: b.dataset.mode }); break;
     case 'level': send({ type: 'setLevel', level: b.dataset.level }); break;
+    case 'tourToggle': send({ type: 'setTour', on: !V.tourOn, rounds: V.tourRounds }); break;
+    case 'tourRounds': send({ type: 'setTour', on: true, rounds: +b.dataset.n }); break;
     case 'ready': send({ type: 'ready', ready: !player(V.you).ready }); break;
     case 'start': send({ type: 'start' }); break;
     case 'rematch': closeModal(); send({ type: 'rematch' }); break;
@@ -1355,6 +1497,10 @@ const sfx = {
   cabo: () => [392, 392, 523, 659].forEach((f, i) => tone(f, i === 3 ? .4 : .13, 'square', .08, 0, i * .12)),
   reveal: () => [300, 400, 500, 600, 800].forEach((f, i) => tone(f, .1, 'triangle', .06, 0, i * .06)),
   win: () => [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone(f, .18, 'square', .07, 0, i * .12)),
+  // tournament: a drumroll before the champion, a thump as someone lands on the podium
+  drum: () => { for (let i = 0; i < 16; i++) tone(i % 2 ? 98 : 110, .06, 'triangle', .05 + i * .003, 0, i * .075); },
+  land: () => tone(160, .14, 'sine', .08, -60),
+  rise: () => tone(300, .35, 'triangle', .04, 500),
 };
 
 // Some browsers refuse URL changes on local files; the room code in the URL is only a convenience.

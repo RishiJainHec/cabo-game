@@ -67,6 +67,7 @@
       <div class="minilogo">CABO</div>
       <span class="chip" id="roomChip"></span>
       <span class="chip" id="modeChip"></span>
+      <span class="chip tourchip hidden" id="tourChip"></span>
       <span class="spacer"></span>
       <button class="iconbtn ib-sound" data-do="mute" id="muteBtn" title="Sound on/off">
         <svg viewBox="0 0 24 24"><path class="fillink" d="M4 9h3l5-4v14l-5-4H4z"/><path class="wave w1" d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path class="wave w2" d="M18 7a7 7 0 0 1 0 10"/><path class="xmark" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
@@ -95,6 +96,11 @@
       <div class="spot right" id="spotRight"></div>
       <div class="spot me" id="spotMe"></div>
     </div>
+    <!-- Tournament leaderboard (only in a tournament); open/closed state is remembered -->
+    <aside id="board" class="hidden">
+      <div class="board-panel"><div class="board-h" id="boardHead"></div><div id="boardBody"></div></div>
+      <button class="board-tab" data-do="board" title="Leaderboard"><span class="ct-lb">SCORES</span></button>
+    </aside>
     <!-- Card-powers cheat sheet; open/closed state is remembered -->
     <aside id="cheat">
       <div class="cheat-hint">Card powers</div>

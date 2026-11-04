@@ -992,3 +992,138 @@ body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yell
 .slot.tappable.up:hover .card { transform: rotateY(180deg) translateY(-4px) scale(1.04); }
 .matchcall.soft { font-size: 18px; animation: none; opacity: .9; }
 .matchcall.soft b { font-size: 24px; }
+
+/* ================= tournament ================= */
+/* lobby: the tournament switch, and the round count once it's on */
+.tour-box { margin-top: 16px; border: 3px solid var(--ink); border-radius: 18px; background: #fff; box-shadow: 4px 4px 0 var(--ink); overflow: hidden; transition: background .3s; }
+.tour-box.on { background: linear-gradient(135deg, #fff3c4, #ffe0f0); }
+.tour-toggle { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; text-align: left; background: none; border: 0; }
+.tour-toggle:disabled { cursor: default; }
+.trophy { width: 34px; height: 34px; flex: none; }
+.trophy path { fill: var(--yellow); stroke: var(--ink); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.tour-box.on .trophy { animation: trophyhop 1.8s ease-in-out infinite; }
+@keyframes trophyhop { 0%, 60%, 100% { transform: none; } 70% { transform: translateY(-4px) rotate(-8deg); } 80% { transform: rotate(6deg); } }
+.tt-txt { display: grid; flex: 1; }
+.tt-txt b { font-family: 'Lilita One'; font-weight: 400; font-size: 22px; }
+.tt-txt small { font-size: 13px; color: var(--muted); font-weight: 600; }
+.switch { width: 54px; height: 30px; border: 3px solid var(--ink); border-radius: 99px; background: #e9e0ff; position: relative; flex: none; transition: background .25s; }
+.switch i { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid var(--ink); transition: translate .3s cubic-bezier(.3, 1.8, .5, 1); }
+.tour-box.on .switch { background: var(--lime); }
+.tour-box.on .switch i { translate: 24px 0; }
+.tour-rounds { display: flex; align-items: center; gap: 12px; padding: 0 16px 14px 62px; font-weight: 700; animation: popin .35s cubic-bezier(.3, 1.8, .5, 1) both; }
+
+/* table: round chip and the leaderboard on the left edge */
+.tourchip { background: var(--pink); color: #fff; }
+#board { position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 40; display: flex; align-items: center; }
+.board-tab {
+  width: 42px; padding: 10px 0; border: 3px solid var(--ink); border-left: 0; border-radius: 0 14px 14px 0; background: var(--pink); color: #fff;
+  box-shadow: 3px 3px 0 var(--ink); display: grid; justify-items: center; transition: width .2s;
+}
+.board-tab:hover { width: 48px; }
+.board-tab .ct-lb { transform: none; }
+.board-panel { width: 0; overflow: hidden; transition: width .3s cubic-bezier(.3, 1.3, .5, 1); background: var(--cream); border: 3px solid var(--ink); border-left: 0; border-radius: 0 16px 16px 0; box-shadow: 3px 4px 0 var(--ink); }
+#board.open .board-panel { width: 210px; }
+#board:not(.open) .board-panel { border-width: 0; }
+.board-h { display: flex; align-items: center; gap: 6px; font-family: 'Lilita One'; font-size: 16px; padding: 10px 12px 4px; white-space: nowrap; }
+.board-h .trophy { width: 22px; height: 22px; }
+#boardBody { padding: 0 8px 10px; min-width: 204px; }
+.brow { display: grid; grid-template-columns: 24px 10px 1fr auto; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 10px; font-size: 14px; animation: popin .3s both; }
+.brow.me { background: #fff3c4; border: 2px solid var(--ink); }
+.brow.gone, .tq-row.gone { opacity: .5; }
+.bplace { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-family: 'Lilita One'; font-size: 13px; background: #eee3cc; border: 2px solid var(--ink); }
+.bplace.p1 { background: var(--yellow); } .bplace.p2 { background: #dfe6ef; } .bplace.p3 { background: #f2b27a; }
+.bdot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); }
+.bname { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px; }
+.bwins { display: inline-flex; align-items: center; gap: 1px; font-style: normal; font-size: 11px; color: var(--muted); }
+.tcrown { width: 14px; height: 10px; }
+.tcrown path { fill: var(--yellow); stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; }
+.btotal { font-family: 'Lilita One'; font-size: 16px; }
+@media (min-width: 761px) { #game.board-open { padding-left: 240px; } }
+@media (max-width: 760px) { #board { top: auto; bottom: 90px; transform: none; } }
+
+/* ---------- between rounds / final: full-screen podium ---------- */
+#tourfx {
+  position: fixed; inset: 0; z-index: 60; display: grid; padding: 16px; overflow: auto; /* .tq centres itself, and still scrolls on short screens */
+  background: radial-gradient(ellipse at 50% 30%, #5a23c8 0%, #2a0b6e 55%, #14053a 100%); animation: fadein .35s both;
+}
+#tourfx::before { /* slow spinning light rays behind everything */
+  content: ''; position: fixed; inset: -50%; pointer-events: none; opacity: .18;
+  background: repeating-conic-gradient(from 0deg, #fff 0 6deg, transparent 6deg 18deg); animation: tqspin 40s linear infinite;
+}
+@keyframes tqspin { to { rotate: 1turn; } }
+.tq { position: relative; margin: auto; width: min(720px, 100%); display: grid; justify-items: center; gap: 18px; color: #fff; text-align: center; }
+.tq-title { font-family: 'Lilita One'; font-size: clamp(30px, 5vw, 48px); color: var(--yellow); -webkit-text-stroke: 2px var(--ink); text-shadow: 4px 4px 0 var(--ink); display: grid; animation: popin .5s cubic-bezier(.3, 1.8, .5, 1) both; }
+.tq-title span { font-family: 'Fredoka', sans-serif; font-size: 15px; font-weight: 600; color: #fff; -webkit-text-stroke: 0; text-shadow: none; opacity: .85; }
+
+/* the podium: columns rise, then each player drops onto theirs */
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 12px; height: 330px; width: 100%; }
+.pod { display: flex; flex-direction: column; align-items: center; width: min(180px, 30%); }
+.pod-col {
+  width: 100%; border: 4px solid var(--ink); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 5px 0 0 var(--ink);
+  display: grid; justify-items: center; align-content: start; padding-top: 10px; gap: 0; position: relative; color: var(--ink);
+  transform-origin: bottom; animation: podrise .7s cubic-bezier(.3, 1.4, .5, 1) var(--d) both;
+}
+.pod1 .pod-col { height: 170px; background: linear-gradient(#ffe27a, var(--yellow)); }
+.pod2 .pod-col { height: 125px; background: linear-gradient(#f4f7fb, #c9d4e3); }
+.pod3 .pod-col { height: 92px; background: linear-gradient(#f8c79c, #e59a5f); }
+@keyframes podrise { from { transform: scaleY(0); } to { transform: none; } }
+.pod-num { font-family: 'Lilita One'; font-size: 34px; line-height: 1; }
+.pod-total { font-family: 'Lilita One'; font-weight: 400; font-size: 26px; line-height: 1.1; }
+.pod-col small { font-size: 11px; font-weight: 700; opacity: .7; }
+.pod-delta { position: absolute; top: -14px; right: -10px; font-style: normal; font-weight: 800; font-size: 13px; background: var(--ink); color: var(--lime); padding: 2px 8px; border-radius: 99px; animation: popin .4s calc(var(--d) + .9s) both; }
+.pod-who { display: grid; justify-items: center; gap: 4px; margin-bottom: 8px; position: relative; animation: poddrop .6s cubic-bezier(.3, 1.6, .5, 1) calc(var(--d) + .35s) both; }
+@keyframes poddrop { 0% { transform: translateY(-260px) scale(.6); opacity: 0; } 70% { transform: translateY(6px) scale(1.05, .92); opacity: 1; } 100% { transform: none; } }
+.pod-av { width: 64px; height: 64px; border-radius: 50%; border: 4px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); display: grid; place-items: center; font-family: 'Lilita One'; font-size: 30px; color: var(--ink); }
+.pod1 .pod-av { width: 84px; height: 84px; font-size: 40px; }
+.pod-name { font-weight: 800; font-size: 16px; text-shadow: 2px 2px 0 var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pod-name small { opacity: .8; font-weight: 600; }
+.pod-who .tcrown { position: absolute; top: -26px; width: 48px; height: 34px; animation: crowndrop .7s cubic-bezier(.3, 1.8, .5, 1) calc(var(--d) + .8s) both; }
+@keyframes crowndrop { from { transform: translateY(-80px) rotate(-30deg); opacity: 0; } to { transform: rotate(-8deg); opacity: 1; } }
+.pod1 .pod-av { animation: champglow 1.6s ease-in-out calc(var(--d) + 1s) infinite; }
+@keyframes champglow { 50% { box-shadow: 3px 3px 0 var(--ink), 0 0 0 8px rgba(255, 210, 63, .35), 0 0 40px var(--yellow); } }
+
+/* everyone else, sliding in below the podium */
+.tq-list { width: min(520px, 100%); display: grid; gap: 6px; }
+.tq-row {
+  display: grid; grid-template-columns: 26px 12px 1fr auto auto; align-items: center; gap: 10px; padding: 8px 14px;
+  background: var(--cream); color: var(--ink); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 3px 3px 0 var(--ink);
+  font-weight: 700; text-align: left; animation: rowin .5s cubic-bezier(.3, 1.4, .5, 1) var(--d) both;
+}
+.tq-row.me { background: #fff3c4; }
+.tq-row b { font-family: 'Lilita One'; font-weight: 400; font-size: 20px; min-width: 36px; text-align: right; }
+.tq-name small { color: var(--muted); font-weight: 600; }
+.tq-delta { font-size: 13px; color: var(--muted); }
+.tq-wins { display: flex; gap: 2px; font-size: 12px; align-items: center; }
+@keyframes rowin { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* countdown to the next round */
+.tq-next { display: grid; gap: 8px; width: min(360px, 100%); font-weight: 700; animation: popin .4s var(--d) both; }
+.tq-next b { font-family: 'Lilita One'; font-size: 22px; color: var(--yellow); font-weight: 400; }
+.tq-bar { height: 12px; border: 3px solid var(--ink); border-radius: 99px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+.tq-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--lime), var(--yellow)); transform-origin: left; animation: tqdrain linear both; }
+@keyframes tqdrain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.tq-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; animation: popin .4s var(--d) both; }
+
+/* the final: "And the champion is…" then a stamp with the name */
+#tourfx.final { background: radial-gradient(ellipse at 50% 35%, #3b1590 0%, #1a0650 60%, #0b0226 100%); }
+.tq-intro { font-family: 'Lilita One'; font-size: clamp(26px, 4vw, 40px); animation: tqintro 4.6s ease-in-out both; }
+.tq-intro .dots i { font-style: normal; animation: tqdot 1s infinite; }
+.tq-intro .dots i:nth-child(2) { animation-delay: .2s; } .tq-intro .dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes tqdot { 50% { opacity: .2; } }
+@keyframes tqintro { 0% { opacity: 0; transform: scale(.8); } 10%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; height: 0; margin: -9px 0; } }
+.tq-title.champ { animation: champstamp .7s cubic-bezier(.3, 1.6, .5, 1) var(--d) both; color: var(--yellow); }
+.tq-title.champ span { font-family: 'Lilita One'; font-size: clamp(26px, 4vw, 40px); color: #fff; -webkit-text-stroke: 2px var(--ink); text-shadow: 3px 3px 0 var(--ink); opacity: 1; }
+@keyframes champstamp { 0% { transform: scale(3) rotate(-12deg); opacity: 0; } 60% { transform: scale(.95) rotate(-3deg); opacity: 1; } 100% { transform: rotate(-3deg); opacity: 1; } }
+/* a spotlight sweeps the stage while you wait for first place */
+#tourfx.final .podium { position: relative; }
+#tourfx.final .podium::after {
+  content: ''; position: absolute; inset: -40px 10%; pointer-events: none; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 240, 180, .35), transparent 60%); animation: spot 2.2s ease-in-out 2.6s 1 both;
+}
+@keyframes spot { 0% { transform: translateX(-45%); opacity: 0; } 20% { opacity: 1; } 50% { transform: translateX(45%); } 80% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(0); opacity: .6; } }
+
+/* re-opened from the Standings button: no build-up */
+#tourfx.instant *, #tourfx.instant::before { animation-delay: 0s !important; }
+#tourfx.instant .tq-intro { display: none; }
+#tourfx.instant .pod-col, #tourfx.instant .pod-who, #tourfx.instant .tq-row, #tourfx.instant .tq-title, #tourfx.instant .pod-delta, #tourfx.instant .tq-actions, #tourfx.instant .tcrown { animation-duration: .01s !important; }
+@media (max-height: 760px) { .podium { height: 280px; } .pod1 .pod-col { height: 140px; } .pod2 .pod-col { height: 104px; } .pod3 .pod-col { height: 76px; } .pod-av { width: 52px; height: 52px; font-size: 24px; } .pod1 .pod-av { width: 68px; height: 68px; font-size: 32px; } }

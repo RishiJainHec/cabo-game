@@ -1002,6 +1002,141 @@ body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yell
 .matchcall.soft { font-size: 18px; animation: none; opacity: .9; }
 .matchcall.soft b { font-size: 24px; }
 
+/* ================= tournament ================= */
+/* lobby: the tournament switch, and the round count once it's on */
+.tour-box { margin-top: 16px; border: 3px solid var(--ink); border-radius: 18px; background: #fff; box-shadow: 4px 4px 0 var(--ink); overflow: hidden; transition: background .3s; }
+.tour-box.on { background: linear-gradient(135deg, #fff3c4, #ffe0f0); }
+.tour-toggle { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; text-align: left; background: none; border: 0; }
+.tour-toggle:disabled { cursor: default; }
+.trophy { width: 34px; height: 34px; flex: none; }
+.trophy path { fill: var(--yellow); stroke: var(--ink); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.tour-box.on .trophy { animation: trophyhop 1.8s ease-in-out infinite; }
+@keyframes trophyhop { 0%, 60%, 100% { transform: none; } 70% { transform: translateY(-4px) rotate(-8deg); } 80% { transform: rotate(6deg); } }
+.tt-txt { display: grid; flex: 1; }
+.tt-txt b { font-family: 'Lilita One'; font-weight: 400; font-size: 22px; }
+.tt-txt small { font-size: 13px; color: var(--muted); font-weight: 600; }
+.switch { width: 54px; height: 30px; border: 3px solid var(--ink); border-radius: 99px; background: #e9e0ff; position: relative; flex: none; transition: background .25s; }
+.switch i { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid var(--ink); transition: translate .3s cubic-bezier(.3, 1.8, .5, 1); }
+.tour-box.on .switch { background: var(--lime); }
+.tour-box.on .switch i { translate: 24px 0; }
+.tour-rounds { display: flex; align-items: center; gap: 12px; padding: 0 16px 14px 62px; font-weight: 700; animation: popin .35s cubic-bezier(.3, 1.8, .5, 1) both; }
+
+/* table: round chip and the leaderboard on the left edge */
+.tourchip { background: var(--pink); color: #fff; }
+#board { position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 40; display: flex; align-items: center; }
+.board-tab {
+  width: 42px; padding: 10px 0; border: 3px solid var(--ink); border-left: 0; border-radius: 0 14px 14px 0; background: var(--pink); color: #fff;
+  box-shadow: 3px 3px 0 var(--ink); display: grid; justify-items: center; transition: width .2s;
+}
+.board-tab:hover { width: 48px; }
+.board-tab .ct-lb { transform: none; }
+.board-panel { width: 0; overflow: hidden; transition: width .3s cubic-bezier(.3, 1.3, .5, 1); background: var(--cream); border: 3px solid var(--ink); border-left: 0; border-radius: 0 16px 16px 0; box-shadow: 3px 4px 0 var(--ink); }
+#board.open .board-panel { width: 210px; }
+#board:not(.open) .board-panel { border-width: 0; }
+.board-h { display: flex; align-items: center; gap: 6px; font-family: 'Lilita One'; font-size: 16px; padding: 10px 12px 4px; white-space: nowrap; }
+.board-h .trophy { width: 22px; height: 22px; }
+#boardBody { padding: 0 8px 10px; min-width: 204px; }
+.brow { display: grid; grid-template-columns: 24px 10px 1fr auto; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 10px; font-size: 14px; animation: popin .3s both; }
+.brow.me { background: #fff3c4; border: 2px solid var(--ink); }
+.brow.gone, .tq-row.gone { opacity: .5; }
+.bplace { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-family: 'Lilita One'; font-size: 13px; background: #eee3cc; border: 2px solid var(--ink); }
+.bplace.p1 { background: var(--yellow); } .bplace.p2 { background: #dfe6ef; } .bplace.p3 { background: #f2b27a; }
+.bdot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); }
+.bname { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px; }
+.bwins { display: inline-flex; align-items: center; gap: 1px; font-style: normal; font-size: 11px; color: var(--muted); }
+.tcrown { width: 14px; height: 10px; }
+.tcrown path { fill: var(--yellow); stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; }
+.btotal { font-family: 'Lilita One'; font-size: 16px; }
+@media (min-width: 761px) { #game.board-open { padding-left: 240px; } }
+@media (max-width: 760px) { #board { top: auto; bottom: 90px; transform: none; } }
+
+/* ---------- between rounds / final: full-screen podium ---------- */
+#tourfx {
+  position: fixed; inset: 0; z-index: 60; display: grid; padding: 16px; overflow: auto; /* .tq centres itself, and still scrolls on short screens */
+  background: radial-gradient(ellipse at 50% 30%, #5a23c8 0%, #2a0b6e 55%, #14053a 100%); animation: fadein .35s both;
+}
+#tourfx::before { /* slow spinning light rays behind everything */
+  content: ''; position: fixed; inset: -50%; pointer-events: none; opacity: .18;
+  background: repeating-conic-gradient(from 0deg, #fff 0 6deg, transparent 6deg 18deg); animation: tqspin 40s linear infinite;
+}
+@keyframes tqspin { to { rotate: 1turn; } }
+.tq { position: relative; margin: auto; width: min(720px, 100%); display: grid; justify-items: center; gap: 18px; color: #fff; text-align: center; }
+.tq-title { font-family: 'Lilita One'; font-size: clamp(30px, 5vw, 48px); color: var(--yellow); -webkit-text-stroke: 2px var(--ink); text-shadow: 4px 4px 0 var(--ink); display: grid; animation: popin .5s cubic-bezier(.3, 1.8, .5, 1) both; }
+.tq-title span { font-family: 'Fredoka', sans-serif; font-size: 15px; font-weight: 600; color: #fff; -webkit-text-stroke: 0; text-shadow: none; opacity: .85; }
+
+/* the podium: columns rise, then each player drops onto theirs */
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 12px; height: 330px; width: 100%; }
+.pod { display: flex; flex-direction: column; align-items: center; width: min(180px, 30%); }
+.pod-col {
+  width: 100%; border: 4px solid var(--ink); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 5px 0 0 var(--ink);
+  display: grid; justify-items: center; align-content: start; padding-top: 10px; gap: 0; position: relative; color: var(--ink);
+  transform-origin: bottom; animation: podrise .7s cubic-bezier(.3, 1.4, .5, 1) var(--d) both;
+}
+.pod1 .pod-col { height: 170px; background: linear-gradient(#ffe27a, var(--yellow)); }
+.pod2 .pod-col { height: 125px; background: linear-gradient(#f4f7fb, #c9d4e3); }
+.pod3 .pod-col { height: 92px; background: linear-gradient(#f8c79c, #e59a5f); }
+@keyframes podrise { from { transform: scaleY(0); } to { transform: none; } }
+.pod-num { font-family: 'Lilita One'; font-size: 34px; line-height: 1; }
+.pod-total { font-family: 'Lilita One'; font-weight: 400; font-size: 26px; line-height: 1.1; }
+.pod-col small { font-size: 11px; font-weight: 700; opacity: .7; }
+.pod-delta { position: absolute; top: -14px; right: -10px; font-style: normal; font-weight: 800; font-size: 13px; background: var(--ink); color: var(--lime); padding: 2px 8px; border-radius: 99px; animation: popin .4s calc(var(--d) + .9s) both; }
+.pod-who { display: grid; justify-items: center; gap: 4px; margin-bottom: 8px; position: relative; animation: poddrop .6s cubic-bezier(.3, 1.6, .5, 1) calc(var(--d) + .35s) both; }
+@keyframes poddrop { 0% { transform: translateY(-260px) scale(.6); opacity: 0; } 70% { transform: translateY(6px) scale(1.05, .92); opacity: 1; } 100% { transform: none; } }
+.pod-av { width: 64px; height: 64px; border-radius: 50%; border: 4px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); display: grid; place-items: center; font-family: 'Lilita One'; font-size: 30px; color: var(--ink); }
+.pod1 .pod-av { width: 84px; height: 84px; font-size: 40px; }
+.pod-name { font-weight: 800; font-size: 16px; text-shadow: 2px 2px 0 var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pod-name small { opacity: .8; font-weight: 600; }
+.pod-who .tcrown { position: absolute; top: -26px; width: 48px; height: 34px; animation: crowndrop .7s cubic-bezier(.3, 1.8, .5, 1) calc(var(--d) + .8s) both; }
+@keyframes crowndrop { from { transform: translateY(-80px) rotate(-30deg); opacity: 0; } to { transform: rotate(-8deg); opacity: 1; } }
+.pod1 .pod-av { animation: champglow 1.6s ease-in-out calc(var(--d) + 1s) infinite; }
+@keyframes champglow { 50% { box-shadow: 3px 3px 0 var(--ink), 0 0 0 8px rgba(255, 210, 63, .35), 0 0 40px var(--yellow); } }
+
+/* everyone else, sliding in below the podium */
+.tq-list { width: min(520px, 100%); display: grid; gap: 6px; }
+.tq-row {
+  display: grid; grid-template-columns: 26px 12px 1fr auto auto; align-items: center; gap: 10px; padding: 8px 14px;
+  background: var(--cream); color: var(--ink); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 3px 3px 0 var(--ink);
+  font-weight: 700; text-align: left; animation: rowin .5s cubic-bezier(.3, 1.4, .5, 1) var(--d) both;
+}
+.tq-row.me { background: #fff3c4; }
+.tq-row b { font-family: 'Lilita One'; font-weight: 400; font-size: 20px; min-width: 36px; text-align: right; }
+.tq-name small { color: var(--muted); font-weight: 600; }
+.tq-delta { font-size: 13px; color: var(--muted); }
+.tq-wins { display: flex; gap: 2px; font-size: 12px; align-items: center; }
+@keyframes rowin { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* countdown to the next round */
+.tq-next { display: grid; gap: 8px; width: min(360px, 100%); font-weight: 700; animation: popin .4s var(--d) both; }
+.tq-next b { font-family: 'Lilita One'; font-size: 22px; color: var(--yellow); font-weight: 400; }
+.tq-bar { height: 12px; border: 3px solid var(--ink); border-radius: 99px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+.tq-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--lime), var(--yellow)); transform-origin: left; animation: tqdrain linear both; }
+@keyframes tqdrain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.tq-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; animation: popin .4s var(--d) both; }
+
+/* the final: "And the champion is…" then a stamp with the name */
+#tourfx.final { background: radial-gradient(ellipse at 50% 35%, #3b1590 0%, #1a0650 60%, #0b0226 100%); }
+.tq-intro { font-family: 'Lilita One'; font-size: clamp(26px, 4vw, 40px); animation: tqintro 4.6s ease-in-out both; }
+.tq-intro .dots i { font-style: normal; animation: tqdot 1s infinite; }
+.tq-intro .dots i:nth-child(2) { animation-delay: .2s; } .tq-intro .dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes tqdot { 50% { opacity: .2; } }
+@keyframes tqintro { 0% { opacity: 0; transform: scale(.8); } 10%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; height: 0; margin: -9px 0; } }
+.tq-title.champ { animation: champstamp .7s cubic-bezier(.3, 1.6, .5, 1) var(--d) both; color: var(--yellow); }
+.tq-title.champ span { font-family: 'Lilita One'; font-size: clamp(26px, 4vw, 40px); color: #fff; -webkit-text-stroke: 2px var(--ink); text-shadow: 3px 3px 0 var(--ink); opacity: 1; }
+@keyframes champstamp { 0% { transform: scale(3) rotate(-12deg); opacity: 0; } 60% { transform: scale(.95) rotate(-3deg); opacity: 1; } 100% { transform: rotate(-3deg); opacity: 1; } }
+/* a spotlight sweeps the stage while you wait for first place */
+#tourfx.final .podium { position: relative; }
+#tourfx.final .podium::after {
+  content: ''; position: absolute; inset: -40px 10%; pointer-events: none; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 240, 180, .35), transparent 60%); animation: spot 2.2s ease-in-out 2.6s 1 both;
+}
+@keyframes spot { 0% { transform: translateX(-45%); opacity: 0; } 20% { opacity: 1; } 50% { transform: translateX(45%); } 80% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(0); opacity: .6; } }
+
+/* re-opened from the Standings button: no build-up */
+#tourfx.instant *, #tourfx.instant::before { animation-delay: 0s !important; }
+#tourfx.instant .tq-intro { display: none; }
+#tourfx.instant .pod-col, #tourfx.instant .pod-who, #tourfx.instant .tq-row, #tourfx.instant .tq-title, #tourfx.instant .pod-delta, #tourfx.instant .tq-actions, #tourfx.instant .tcrown { animation-duration: .01s !important; }
+@media (max-height: 760px) { .podium { height: 280px; } .pod1 .pod-col { height: 140px; } .pod2 .pod-col { height: 104px; } .pod3 .pod-col { height: 76px; } .pod-av { width: 52px; height: 52px; font-size: 24px; } .pod1 .pod-av { width: 68px; height: 68px; font-size: 32px; } }
+
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='14' y='4' width='72' height='92' rx='12' fill='%23ff4fa3' stroke='%231d0f3f' stroke-width='6'/><circle cx='50' cy='50' r='18' fill='%23ffd23f' stroke='%231d0f3f' stroke-width='5'/></svg>">
 </head>
@@ -1063,6 +1198,7 @@ body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yell
       <div class="minilogo">CABO</div>
       <span class="chip" id="roomChip"></span>
       <span class="chip" id="modeChip"></span>
+      <span class="chip tourchip hidden" id="tourChip"></span>
       <span class="spacer"></span>
       <button class="iconbtn ib-sound" data-do="mute" id="muteBtn" title="Sound on/off">
         <svg viewBox="0 0 24 24"><path class="fillink" d="M4 9h3l5-4v14l-5-4H4z"/><path class="wave w1" d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path class="wave w2" d="M18 7a7 7 0 0 1 0 10"/><path class="xmark" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
@@ -1091,6 +1227,11 @@ body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yell
       <div class="spot right" id="spotRight"></div>
       <div class="spot me" id="spotMe"></div>
     </div>
+    <!-- Tournament leaderboard (only in a tournament); open/closed state is remembered -->
+    <aside id="board" class="hidden">
+      <div class="board-panel"><div class="board-h" id="boardHead"></div><div id="boardBody"></div></div>
+      <button class="board-tab" data-do="board" title="Leaderboard"><span class="ct-lb">SCORES</span></button>
+    </aside>
     <!-- Card-powers cheat sheet; open/closed state is remembered -->
     <aside id="cheat">
       <div class="cheat-hint">Card powers</div>
@@ -2053,6 +2194,9 @@ const LEVELS = ['easy', 'medium', 'hard'];
 const AWAY_MS = 10000;  // disconnected
 const IDLE_MS = 60000;  // connected but not moving
 const HOST_GRACE_MS = 10000; // a host who drops (e.g. reloads) keeps the role this long
+// Tournament: a set number of rounds with the same table; lowest running total wins.
+const TOUR_ROUNDS = [5, 7, 10];
+const TOUR_BREAK_MS = 10500; // between rounds: cards shown (2.5 s), podium (3 s), leaderboard (5 s)
 const rooms = new Map();
 const newId = () => crypto.randomBytes(6).toString('hex');
 function newCode() {
@@ -2074,6 +2218,9 @@ class Room {
     this.hostId = null;
     this.mode = 'FF';
     this.level = 'medium'; // bot difficulty
+    this.tourOn = false;    // host's lobby setting
+    this.tourRounds = 5;
+    this.tour = null;       // the tournament being played: { rounds, round, scores, done, nextAt }
     this.game = null;
     this.bots = [];
     this.standIns = {}; // pid -> Bot making a stuck human's move
@@ -2084,7 +2231,8 @@ class Room {
   connected(p) { return p.isBot || (p.ws && p.ws.readyState === 1); }
 
   view(pid) {
-    const base = { code: this.code, hostId: this.hostId, mode: this.mode, level: this.level, you: pid };
+    const base = { code: this.code, hostId: this.hostId, mode: this.mode, level: this.level, you: pid,
+      tourOn: this.tourOn, tourRounds: this.tourRounds, tour: this.tourView() };
     if (!this.game) {
       return {
         ...base, status: 'LOBBY', now: Date.now(),
@@ -2152,10 +2300,63 @@ class Room {
     this.players.push({ id: newId(), token: null, name: names.find((n) => !used.has(n)) || 'Bot', ready: true, isBot: true });
   }
 
+  // ---------- tournament ----------
+  newTour() {
+    const scores = {};
+    for (const p of this.players) scores[p.id] = { id: p.id, name: p.name, isBot: p.isBot, total: 0, last: null, wins: 0, left: false };
+    this.tour = { rounds: this.tourRounds, round: 1, scores, done: false, nextAt: null, timer: null };
+  }
+  // A round just ended: add it to the running totals, then the next round starts by itself after
+  // the break, or the tournament is over.
+  roundOver() {
+    const t = this.tour;
+    if (!t || t.done || !this.game.results) return;
+    const res = this.game.results;
+    for (const r of res.players) {
+      const s = t.scores[r.id];
+      if (!s) continue;
+      s.total += r.total;
+      s.last = r.total;
+      if (res.winners.includes(r.id)) s.wins++;
+    }
+    for (const p of this.players) if (p.left && t.scores[p.id]) t.scores[p.id].left = true;
+    const staying = this.players.filter((x) => x.isBot || !x.left);
+    if (t.round >= t.rounds || staying.length < MIN_PLAYERS || !staying.some((x) => !x.isBot)) {
+      t.done = true;
+      t.nextAt = null;
+      return;
+    }
+    t.nextAt = Date.now() + TOUR_BREAK_MS;
+    t.timer = setTimeout(() => this.nextRound(), TOUR_BREAK_MS);
+  }
+  nextRound() {
+    const t = this.tour;
+    if (!t || t.done || rooms.get(this.code) !== this || !this.game) return;
+    this.stopGame();
+    this.players = this.players.filter((x) => x.isBot || !x.left); // anyone who left sits out the rest
+    this.fixHost(true);
+    t.round++;
+    t.nextAt = null;
+    this.start();
+  }
+  endTour() {
+    if (this.tour) clearTimeout(this.tour.timer);
+    this.tour = null;
+  }
+  // Standings: lowest total first, more rounds won breaks a tie; anyone who left goes to the bottom.
+  tourView() {
+    const t = this.tour;
+    if (!t) return null;
+    const rows = Object.values(t.scores).map(({ id, name, isBot, total, last, wins, left }) => ({ id, name, isBot, total, last, wins, left }));
+    rows.sort((a, b) => (a.left - b.left) || (a.total - b.total) || (b.wins - a.wins));
+    rows.forEach((r, i) => { const prev = rows[i - 1]; r.place = prev && !r.left && !prev.left && prev.total === r.total && prev.wins === r.wins ? prev.place : i + 1; });
+    return { rounds: t.rounds, round: t.round, done: t.done, nextAt: t.nextAt, standings: rows };
+  }
+
   start() {
     this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode, { open: true }); // match until the next card
     this.game.onUpdate = () => this.broadcast();
-    this.game.onEvent = (ev) => this.event(ev);
+    this.game.onEvent = (ev) => { if (ev.kind === 'gameover') this.roundOver(); this.event(ev); };
     for (const p of this.players) if (!p.isBot && !this.connected(p)) this.game.setConnected(p.id, false);
     this.bots = this.players.filter((p) => p.isBot).map((p) => new Bot(this.game, p.id, this.level));
     this.broadcast();
@@ -2252,6 +2453,12 @@ const roomHandlers = {
     room.mode = m.mode === 'MD' ? 'MD' : 'FF';
     room.broadcast();
   },
+  setTour(room, p, m) {
+    if (room.game || p.id !== room.hostId) return 'Only the host can set up a tournament';
+    room.tourOn = !!m.on;
+    if (TOUR_ROUNDS.includes(m.rounds)) room.tourRounds = m.rounds;
+    room.broadcast();
+  },
   setLevel(room, p, m) {
     if (room.game || p.id !== room.hostId) return 'Only the host can change the bot level';
     room.level = LEVELS.includes(m.level) ? m.level : 'medium';
@@ -2275,6 +2482,7 @@ const roomHandlers = {
     if (room.game || p.id !== room.hostId) return 'Only the host can start';
     if (room.players.length < MIN_PLAYERS) return `CABO needs at least ${MIN_PLAYERS} players`;
     if (!room.players.every((x) => x.ready || x.id === room.hostId)) return 'Waiting for everyone to be ready';
+    if (room.tourOn) room.newTour(); else room.endTour();
     room.start();
   },
   // Once a game is over, anyone can take the whole table back to the lobby, where the host can
@@ -2282,6 +2490,8 @@ const roomHandlers = {
   rematch(room, p) {
     if (!room.game) return;
     if (room.game.status !== 'GAME_OVER') return 'Game still running';
+    if (room.tour && !room.tour.done) return 'The tournament is still going';
+    room.endTour();
     room.stopGame();
     room.players = room.players.filter((x) => x.isBot || room.connected(x));
     room.fixHost(true);
@@ -2293,7 +2503,7 @@ const roomHandlers = {
     if (!room.game) {
       room.players = room.players.filter((x) => x !== p);
       if (room.hostId === p.id) { room.hostId = null; room.fixHost(true); }
-      if (!room.players.some((x) => !x.isBot)) { rooms.delete(room.code); room.stopGame(); return; }
+      if (!room.players.some((x) => !x.isBot)) { rooms.delete(room.code); room.stopGame(); room.endTour(); return; }
     } else {
       // mid-game the seat stays (a stand-in plays it); the role of host moves on right away
       p.ws = null;
@@ -2342,7 +2552,7 @@ function onClose(ws) {
 function sweep() {
   for (const [code, room] of rooms) {
     const anyone = room.players.some((p) => !p.isBot && room.connected(p));
-    if (!anyone && Date.now() - room.touched > 30 * 60000) { room.stopGame(); rooms.delete(code); }
+    if (!anyone && Date.now() - room.touched > 30 * 60000) { room.stopGame(); room.endTour(); rooms.delete(code); }
   }
 }
 
@@ -2507,7 +2717,7 @@ function show() {
   const scr = !V ? 'home' : V.status === 'LOBBY' ? 'lobby' : 'game';
   for (const id of ['home', 'lobby', 'game']) $('#' + id).classList.toggle('hidden', id !== scr);
   if (scr === 'home') renderHome();
-  if (scr !== 'game') resetTable();
+  if (scr !== 'game') { resetTable(); closeTour(); }
   if (scr === 'lobby') renderLobby();
   if (scr === 'game') renderGame();
 }
@@ -2520,6 +2730,7 @@ function resetTable() {
   cancelHold();
   Object.assign(local, { sel: null, queenSwap: false, clicked: new Set(), turnKey: '', resultsShown: false, gameId: null });
   closeModal('results');
+  closeTour(); // a tournament's next round has begun
 }
 
 function renderHome() {
@@ -2739,14 +2950,29 @@ function renderLobby() {
     `<button class="lvl ${V.level === k ? 'on' : ''}" data-do="level" data-level="${k}" ${host ? '' : 'disabled'}>${label}</button>`).join('');
   setHTML($('#lbModes'), `<h3 style="margin-bottom:8px">Game mode ${host ? '' : '<span class="muted">(host picks)</span>'}</h3>
     <div class="modes">${modes}</div>
-    ${V.players.some((p) => p.isBot) ? `<div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>` : ''}`);
+    ${V.players.some((p) => p.isBot) ? `<div class="levels"><h3>Bot level</h3><div class="lvl-row">${levels}</div></div>` : ''}
+    ${tourSetupHTML(host)}`);
   setHTML($('#lbActions'), `<div class="lobby-actions">
       ${host
-        ? `<button class="btn pink big" data-do="start" ${full && allReady ? '' : 'disabled'}>Start game</button>`
+        ? `<button class="btn pink big" data-do="start" ${full && allReady ? '' : 'disabled'}>${V.tourOn ? 'Start tournament' : 'Start game'}</button>`
         : `<button class="btn big ${me.ready ? 'white' : 'lime'}" data-do="ready">${me.ready ? 'Not ready' : "I'm ready"}</button>`}
       <button class="btn white" data-do="leave">Leave</button>
     </div>
     <p class="muted" style="text-align:center;margin:12px 0 0">${!full ? 'Need at least one more player. Share the code or link, or add a bot!' : !allReady ? 'Waiting for everyone to be ready…' : host ? 'Everyone is ready. Hit start!' : 'Waiting for the host to start…'}</p>`);
+}
+
+// Tournament switch: several rounds with the same table, lowest running total wins.
+const TROPHY = `<svg class="trophy" viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4M8 20h8M9.5 17h5"/></svg>`;
+function tourSetupHTML(host) {
+  const rounds = [5, 7, 10].map((n) =>
+    `<button class="lvl ${V.tourRounds === n ? 'on' : ''}" data-do="tourRounds" data-n="${n}" ${host ? '' : 'disabled'}>${n}</button>`).join('');
+  return `<div class="tour-box ${V.tourOn ? 'on' : ''}">
+    <button class="tour-toggle" data-do="tourToggle" ${host ? '' : 'disabled'}>
+      ${TROPHY}<span class="tt-txt"><b>Tournament</b><small>${V.tourOn ? `${V.tourRounds} rounds · lowest total wins` : 'Play several rounds, lowest total wins'}</small></span>
+      <span class="switch"><i></i></span>
+    </button>
+    ${V.tourOn ? `<div class="tour-rounds"><span>Rounds</span><div class="lvl-row">${rounds}</div></div>` : ''}
+  </div>`;
 }
 
 // ---------------- game rendering ----------------
@@ -2840,6 +3066,7 @@ function renderGame() {
   renderCenter();
   renderActions();
   renderCheat();
+  renderBoard();
 
   fitTable();
 
@@ -2851,7 +3078,8 @@ function renderGame() {
 
   if (v.status === 'GAME_OVER' && !local.resultsShown) {
     local.resultsShown = true;
-    setTimeout(showResults, 2200);
+    // a tournament shows its podium (or, after the last round, the champion) instead of the round's scores
+    setTimeout(() => { if (V && V.status === 'GAME_OVER') (V.tour ? showTour() : showResults()); }, 2200);
   }}
 
 // Pick the largest card size at which the whole table fits the window, so no cards are ever cut off.
@@ -2998,6 +3226,10 @@ function renderActions() {
     else if (!me.viewed) h = `${btn('Peek', 'view', 'pink big')}${cap('your bottom two cards, once')}`;
     else if (!me.ready) h = `${btn('Ready', 'viewReady', 'lime big')}${cap('memorise them')}`;
     else h = cap('Waiting for the others…');
+  } else if (v.status === 'GAME_OVER' && v.tour && !v.tour.done) {
+    h = cap(`Round ${v.tour.round + 1} is coming up…`);
+  } else if (v.status === 'GAME_OVER' && v.tour) {
+    h = `<div class="row">${btn('Standings', 'standings', 'pink')}${btn('Last round', 'results', 'white')}</div>`;
   } else if (v.status === 'GAME_OVER') {
     h = `<div class="row">${btn('Scores', 'results', 'white')}${soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink')}</div>`;
   } else if (v.phase && v.phase.gives.some((g) => g.attackerId === v.you)) {
@@ -3041,6 +3273,121 @@ function renderCheat() {
   $('#cheat').classList.toggle('open', open);
   $('#cheat').classList.toggle('nudge', !open && localStorage.getItem('cabo.cheatSeen') !== '1');
   $('#game').classList.toggle('cheat-open', open);
+}
+
+// ---------------- tournament ----------------
+const pts = (n) => (n < 0 ? '−' + -n : String(n));
+const delta = (n) => (n < 0 ? pts(n) : '+' + n); // a round's points, signed
+const CROWN = '<svg class="tcrown" viewBox="0 0 24 16"><path d="M2 14 L4 3 L9 9 L12 1 L15 9 L20 3 L22 14 Z"/></svg>';
+// Everyone keeps their table colour, even after they've left.
+const tourColor = (id) => { const i = V.players.findIndex((p) => p.id === id); return COLORS[(i < 0 ? V.tour.standings.findIndex((r) => r.id === id) : i) % COLORS.length]; };
+
+// The round chip in the top bar and the running leaderboard on the left (open unless closed by you).
+function renderBoard() {
+  const T = V.tour;
+  $('#tourChip').classList.toggle('hidden', !T);
+  $('#board').classList.toggle('hidden', !T);
+  const open = !!T && localStorage.getItem('cabo.board') !== '0';
+  $('#board').classList.toggle('open', open);
+  $('#game').classList.toggle('board-open', open);
+  if (!T) return;
+  $('#tourChip').textContent = `Round ${T.round} of ${T.rounds}`;
+  setHTML($('#boardHead'), `${TROPHY}<span>Leaderboard</span>`);
+  setHTML($('#boardBody'), T.standings.map((r) => `<div class="brow ${r.id === V.you ? 'me' : ''} ${r.left ? 'gone' : ''}">
+      <span class="bplace p${r.left ? 0 : r.place}">${r.left ? '–' : r.place}</span>
+      <span class="bdot" style="background:${tourColor(r.id)}"></span>
+      <span class="bname">${esc(r.name)}${r.wins ? `<i class="bwins" title="Rounds won">${CROWN}${r.wins}</i>` : ''}</span>
+      <span class="btotal">${pts(r.total)}</span></div>`).join('') +
+    `<div class="cnote">Lowest total after ${T.rounds} rounds wins</div>`);
+}
+
+// Full-screen tournament moments. Between rounds: the top three rise onto a podium, everyone else
+// slides in below, and a bar counts down to the next round. After the last round: a drumroll, the
+// podium builds from third place up, and the champion drops in with a crown and confetti.
+// `instant` re-opens it without the build-up (the Standings button).
+let tourTick = null;
+function closeTour() { clearInterval(tourTick); tourTick = null; $('#tourfx')?.remove(); }
+function showTour(instant = false) {
+  const T = V && V.tour;
+  if (!T || V.status !== 'GAME_OVER') return;
+  closeTour();
+  closeModal();
+  const final = T.done;
+  const live = T.standings.filter((r) => !r.left);
+  const top = live.slice(0, 3);
+  const champs = live.filter((r) => r.place === 1);
+  // when things happen (seconds); the final makes you wait for first place
+  const at = final ? { 3: 1.3, 2: 2.5, 1: 4.6, board: 6.4 } : { 3: 0.3, 2: 0.6, 1: 0.9, board: 1.7 };
+  const podium = [[top[1], 2], [top[0], 1], [top[2], 3]].filter(([r]) => r).map(([r, spot]) => {
+    const d = at[spot];
+    return `<div class="pod pod${spot}" style="--d:${d}s">
+      <div class="pod-who">
+        ${r.place === 1 ? CROWN : ''}
+        <div class="pod-av" style="background:${tourColor(r.id)}">${esc(r.name[0].toUpperCase())}</div>
+        <div class="pod-name">${esc(r.name)}${r.id === V.you ? ' <small>(you)</small>' : ''}</div>
+      </div>
+      <div class="pod-col"><span class="pod-num">${r.place}</span>
+        <b class="pod-total" data-from="${final ? 0 : r.total - (r.last || 0)}" data-to="${r.total}" data-at="${d + 0.45}">${pts(r.total)}</b><small>points</small>
+        ${!final && r.last != null ? `<em class="pod-delta">${delta(r.last)}</em>` : ''}</div>
+    </div>`;
+  }).join('');
+  // everyone below the podium (or, at the end, the whole table with rounds won)
+  const list = (final ? T.standings : T.standings.slice(3)).filter((r) => final || !top.includes(r)).map((r, i) => `
+    <div class="tq-row ${r.id === V.you ? 'me' : ''} ${r.left ? 'gone' : ''}" style="--d:${at.board + i * 0.12}s">
+      <span class="bplace p${r.left ? 0 : r.place}">${r.left ? '–' : r.place}</span>
+      <span class="bdot" style="background:${tourColor(r.id)}"></span>
+      <span class="tq-name">${esc(r.name)}${r.left ? ' <small>left</small>' : ''}</span>
+      ${final ? `<span class="tq-wins">${r.wins ? CROWN.repeat(Math.min(r.wins, 5)) + (r.wins > 5 ? `×${r.wins}` : '') : ''}</span>` : `<span class="tq-delta">${r.last != null ? delta(r.last) : ''}</span>`}
+      <b>${pts(r.total)}</b></div>`).join('');
+  const champName = champs.length > 1 ? champs.map((c) => esc(c.name)).join(' & ') : esc(champs[0] ? champs[0].name : '');
+  const wait = Math.max(0, (T.nextAt || 0) - snow());
+  const el = document.createElement('div');
+  el.id = 'tourfx';
+  el.className = (final ? 'final' : 'between') + (instant ? ' instant' : '');
+  el.innerHTML = `<div class="tq">
+    ${final
+      ? `<div class="tq-intro">And the champion is<span class="dots"><i>.</i><i>.</i><i>.</i></span></div>
+         <div class="tq-title champ" style="--d:${at[1] + 0.7}s">${champs.length > 1 ? 'Co-champions!' : 'Champion!'}<span>${champName}</span></div>`
+      : `<div class="tq-title">Round ${T.round} of ${T.rounds}<span>Standings so far · lowest total leads</span></div>`}
+    <div class="podium">${podium}</div>
+    ${list ? `<div class="tq-list">${list}</div>` : ''}
+    ${final
+      ? `<div class="tq-actions" style="--d:${at.board + 0.6}s">${soloTable() ? btn('Play again', 'again', 'pink') : btn('Back to lobby', 'rematch', 'pink')}${btn('Last round', 'results', 'white')}${btn('Table', 'closeTour', 'white')}</div>`
+      : `<div class="tq-next" style="--d:${at.board}s"><span>Round ${T.round + 1} starts in <b id="tqSec">${Math.ceil(wait / 1000)}</b></span>
+           <div class="tq-bar"><i style="animation-duration:${wait}ms"></i></div></div>`}
+  </div>`;
+  document.body.appendChild(el);
+
+  // numbers count up as each player lands; sounds follow the build-up
+  const later = (s, fn) => setTimeout(() => el.isConnected && fn(), instant ? 0 : s * 1000);
+  el.querySelectorAll('.pod-total').forEach((b) => {
+    const from = +b.dataset.from, to = +b.dataset.to;
+    if (instant || from === to) return;
+    b.textContent = pts(from);
+    later(+b.dataset.at, () => {
+      const t0 = performance.now();
+      const stepN = (t) => { const k = Math.min(1, (t - t0) / 700); b.textContent = pts(Math.round(from + (to - from) * k)); if (k < 1 && el.isConnected) requestAnimationFrame(stepN); };
+      requestAnimationFrame(stepN);
+    });
+  });
+  if (!instant) {
+    for (const spot of [3, 2, 1]) if (el.querySelector('.pod' + spot)) { later(at[spot], () => sfx.rise()); later(at[spot] + 0.45, () => sfx.land()); }
+    if (final) {
+      later(at[2] + 0.9, () => sfx.drum());
+      later(at[1] + 0.5, () => {
+        sfx.win();
+        el.querySelectorAll('.pod1 .pod-av').forEach((a) => { const [x, y] = center(a); confetti(x, y, 140); });
+        confetti(innerWidth / 2, innerHeight / 4, 120);
+      });
+    }
+  }
+  if (!final) {
+    tourTick = setInterval(() => {
+      const s = $('#tqSec');
+      const left = ((V && V.tour && V.tour.nextAt) || 0) - snow();
+      if (s) s.textContent = Math.max(0, Math.ceil(left / 1000));
+    }, 250);
+  }
 }
 
 // ---------------- results ----------------
@@ -3143,13 +3490,18 @@ document.addEventListener('click', (e) => {
     case 'demoNext': demoCtl.next(); break;
     case 'demoPrev': demoCtl.prev(); break;
     case 'closeModal': case 'bgClose': closeModal(); break;
-    case 'results': local.resultsShown = true; showResults(); break;
+    case 'results': local.resultsShown = true; closeTour(); showResults(); break;
+    case 'standings': local.resultsShown = true; showTour(true); break;
+    case 'closeTour': closeTour(); break;
+    case 'board': localStorage.setItem('cabo.board', $('#board').classList.contains('open') ? '0' : '1'); renderBoard(); fitTable(); break;
     case 'mute': muted = !muted; localStorage.setItem('cabo.muted', muted ? '1' : '0'); $('#muteBtn').classList.toggle('off', muted); break;
     case 'copy': navigator.clipboard?.writeText(b.dataset.link).then(() => toast('Invite link copied', 'good'), () => toast(b.dataset.link)); break;
     case 'addBot': send({ type: 'addBot' }); break;
     case 'kick': send({ type: 'kick', id: b.dataset.id }); break;
     case 'mode': send({ type: 'setMode', mode: b.dataset.mode }); break;
     case 'level': send({ type: 'setLevel', level: b.dataset.level }); break;
+    case 'tourToggle': send({ type: 'setTour', on: !V.tourOn, rounds: V.tourRounds }); break;
+    case 'tourRounds': send({ type: 'setTour', on: true, rounds: +b.dataset.n }); break;
     case 'ready': send({ type: 'ready', ready: !player(V.you).ready }); break;
     case 'start': send({ type: 'start' }); break;
     case 'rematch': closeModal(); send({ type: 'rematch' }); break;
@@ -3720,6 +4072,10 @@ const sfx = {
   cabo: () => [392, 392, 523, 659].forEach((f, i) => tone(f, i === 3 ? .4 : .13, 'square', .08, 0, i * .12)),
   reveal: () => [300, 400, 500, 600, 800].forEach((f, i) => tone(f, .1, 'triangle', .06, 0, i * .06)),
   win: () => [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone(f, .18, 'square', .07, 0, i * .12)),
+  // tournament: a drumroll before the champion, a thump as someone lands on the podium
+  drum: () => { for (let i = 0; i < 16; i++) tone(i % 2 ? 98 : 110, .06, 'triangle', .05 + i * .003, 0, i * .075); },
+  land: () => tone(160, .14, 'sine', .08, -60),
+  rise: () => tone(300, .35, 'triangle', .04, 500),
 };
 
 // Some browsers refuse URL changes on local files; the room code in the URL is only a convenience.

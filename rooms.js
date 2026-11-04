@@ -14,6 +14,9 @@ const LEVELS = ['easy', 'medium', 'hard'];
 const AWAY_MS = 10000;  // disconnected
 const IDLE_MS = 60000;  // connected but not moving
 const HOST_GRACE_MS = 10000; // a host who drops (e.g. reloads) keeps the role this long
+// Tournament: a set number of rounds with the same table; lowest running total wins.
+const TOUR_ROUNDS = [5, 7, 10];
+const TOUR_BREAK_MS = 10500; // between rounds: cards shown (2.5 s), podium (3 s), leaderboard (5 s)
 const rooms = new Map();
 const newId = () => crypto.randomBytes(6).toString('hex');
 function newCode() {
@@ -35,6 +38,9 @@ class Room {
     this.hostId = null;
     this.mode = 'FF';
     this.level = 'medium'; // bot difficulty
+    this.tourOn = false;    // host's lobby setting
+    this.tourRounds = 5;
+    this.tour = null;       // the tournament being played: { rounds, round, scores, done, nextAt }
     this.game = null;
     this.bots = [];
     this.standIns = {}; // pid -> Bot making a stuck human's move
@@ -45,7 +51,8 @@ class Room {
   connected(p) { return p.isBot || (p.ws && p.ws.readyState === 1); }
 
   view(pid) {
-    const base = { code: this.code, hostId: this.hostId, mode: this.mode, level: this.level, you: pid };
+    const base = { code: this.code, hostId: this.hostId, mode: this.mode, level: this.level, you: pid,
+      tourOn: this.tourOn, tourRounds: this.tourRounds, tour: this.tourView() };
     if (!this.game) {
       return {
         ...base, status: 'LOBBY', now: Date.now(),
@@ -113,10 +120,63 @@ class Room {
     this.players.push({ id: newId(), token: null, name: names.find((n) => !used.has(n)) || 'Bot', ready: true, isBot: true });
   }
 
+  // ---------- tournament ----------
+  newTour() {
+    const scores = {};
+    for (const p of this.players) scores[p.id] = { id: p.id, name: p.name, isBot: p.isBot, total: 0, last: null, wins: 0, left: false };
+    this.tour = { rounds: this.tourRounds, round: 1, scores, done: false, nextAt: null, timer: null };
+  }
+  // A round just ended: add it to the running totals, then the next round starts by itself after
+  // the break, or the tournament is over.
+  roundOver() {
+    const t = this.tour;
+    if (!t || t.done || !this.game.results) return;
+    const res = this.game.results;
+    for (const r of res.players) {
+      const s = t.scores[r.id];
+      if (!s) continue;
+      s.total += r.total;
+      s.last = r.total;
+      if (res.winners.includes(r.id)) s.wins++;
+    }
+    for (const p of this.players) if (p.left && t.scores[p.id]) t.scores[p.id].left = true;
+    const staying = this.players.filter((x) => x.isBot || !x.left);
+    if (t.round >= t.rounds || staying.length < MIN_PLAYERS || !staying.some((x) => !x.isBot)) {
+      t.done = true;
+      t.nextAt = null;
+      return;
+    }
+    t.nextAt = Date.now() + TOUR_BREAK_MS;
+    t.timer = setTimeout(() => this.nextRound(), TOUR_BREAK_MS);
+  }
+  nextRound() {
+    const t = this.tour;
+    if (!t || t.done || rooms.get(this.code) !== this || !this.game) return;
+    this.stopGame();
+    this.players = this.players.filter((x) => x.isBot || !x.left); // anyone who left sits out the rest
+    this.fixHost(true);
+    t.round++;
+    t.nextAt = null;
+    this.start();
+  }
+  endTour() {
+    if (this.tour) clearTimeout(this.tour.timer);
+    this.tour = null;
+  }
+  // Standings: lowest total first, more rounds won breaks a tie; anyone who left goes to the bottom.
+  tourView() {
+    const t = this.tour;
+    if (!t) return null;
+    const rows = Object.values(t.scores).map(({ id, name, isBot, total, last, wins, left }) => ({ id, name, isBot, total, last, wins, left }));
+    rows.sort((a, b) => (a.left - b.left) || (a.total - b.total) || (b.wins - a.wins));
+    rows.forEach((r, i) => { const prev = rows[i - 1]; r.place = prev && !r.left && !prev.left && prev.total === r.total && prev.wins === r.wins ? prev.place : i + 1; });
+    return { rounds: t.rounds, round: t.round, done: t.done, nextAt: t.nextAt, standings: rows };
+  }
+
   start() {
     this.game = new Game(this.players.map((p) => ({ id: p.id, name: p.name, isBot: p.isBot })), this.mode, { open: true }); // match until the next card
     this.game.onUpdate = () => this.broadcast();
-    this.game.onEvent = (ev) => this.event(ev);
+    this.game.onEvent = (ev) => { if (ev.kind === 'gameover') this.roundOver(); this.event(ev); };
     for (const p of this.players) if (!p.isBot && !this.connected(p)) this.game.setConnected(p.id, false);
     this.bots = this.players.filter((p) => p.isBot).map((p) => new Bot(this.game, p.id, this.level));
     this.broadcast();
@@ -213,6 +273,12 @@ const roomHandlers = {
     room.mode = m.mode === 'MD' ? 'MD' : 'FF';
     room.broadcast();
   },
+  setTour(room, p, m) {
+    if (room.game || p.id !== room.hostId) return 'Only the host can set up a tournament';
+    room.tourOn = !!m.on;
+    if (TOUR_ROUNDS.includes(m.rounds)) room.tourRounds = m.rounds;
+    room.broadcast();
+  },
   setLevel(room, p, m) {
     if (room.game || p.id !== room.hostId) return 'Only the host can change the bot level';
     room.level = LEVELS.includes(m.level) ? m.level : 'medium';
@@ -236,6 +302,7 @@ const roomHandlers = {
     if (room.game || p.id !== room.hostId) return 'Only the host can start';
     if (room.players.length < MIN_PLAYERS) return `CABO needs at least ${MIN_PLAYERS} players`;
     if (!room.players.every((x) => x.ready || x.id === room.hostId)) return 'Waiting for everyone to be ready';
+    if (room.tourOn) room.newTour(); else room.endTour();
     room.start();
   },
   // Once a game is over, anyone can take the whole table back to the lobby, where the host can
@@ -243,6 +310,8 @@ const roomHandlers = {
   rematch(room, p) {
     if (!room.game) return;
     if (room.game.status !== 'GAME_OVER') return 'Game still running';
+    if (room.tour && !room.tour.done) return 'The tournament is still going';
+    room.endTour();
     room.stopGame();
     room.players = room.players.filter((x) => x.isBot || room.connected(x));
     room.fixHost(true);
@@ -254,7 +323,7 @@ const roomHandlers = {
     if (!room.game) {
       room.players = room.players.filter((x) => x !== p);
       if (room.hostId === p.id) { room.hostId = null; room.fixHost(true); }
-      if (!room.players.some((x) => !x.isBot)) { rooms.delete(room.code); room.stopGame(); return; }
+      if (!room.players.some((x) => !x.isBot)) { rooms.delete(room.code); room.stopGame(); room.endTour(); return; }
     } else {
       // mid-game the seat stays (a stand-in plays it); the role of host moves on right away
       p.ws = null;
@@ -303,7 +372,7 @@ function onClose(ws) {
 function sweep() {
   for (const [code, room] of rooms) {
     const anyone = room.players.some((p) => !p.isBot && room.connected(p));
-    if (!anyone && Date.now() - room.touched > 30 * 60000) { room.stopGame(); rooms.delete(code); }
+    if (!anyone && Date.now() - room.touched > 30 * 60000) { room.stopGame(); room.endTour(); rooms.delete(code); }
   }
 }
 
