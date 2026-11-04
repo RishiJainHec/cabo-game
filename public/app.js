@@ -617,10 +617,12 @@ function renderCenter() {
   }).join('') : '<div class="face"></div>'));
   $('#discardPile').classList.toggle('empty', !rec.length);
 
-  // the drawn card sits next to whoever drew it
+  // the drawn card sits next to whoever drew it. It only moves when someone new is holding a card:
+  // the turn passes on in the same update as a swap, and the swapped card must fly from the
+  // swapper's side, not from the next player's.
   let hz = $('#handzone');
   if (!hz) { hz = document.createElement('div'); hz.id = 'handzone'; hz.className = 'handzone idle'; }
-  const holder = v.activeId && seats[v.activeId];
+  const holder = (v.hand || v.handHeld) && v.activeId && seats[v.activeId];
   if (holder) {
     const spot = holder.el.parentNode;
     if (hz.parentNode !== spot) spot.appendChild(hz);
