@@ -403,7 +403,7 @@ body.matching .slot.elig .face { box-shadow: 0 0 0 3px var(--yellow), 0 0 18px v
 .toast.bad { background: #ffd0d8; } .toast.good { background: #dcffc0; }
 .float { position: fixed; z-index: 70; pointer-events: none; font-family: 'Lilita One'; font-size: 30px; color: var(--yellow); -webkit-text-stroke: 2px var(--ink); text-shadow: 3px 3px 0 var(--ink); animation: floatup 1.9s ease-out forwards; white-space: nowrap; transform: translate(-50%, -50%); }
 .float.bad { color: var(--red); } .float.good { color: var(--lime); }
-#fx { position: fixed; inset: 0; pointer-events: none; z-index: 90; }
+#fx { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 90; } /* sized in CSS, or a retina canvas shows at 2x */
 .bigcall { position: fixed; inset: 0; display: grid; place-items: center; z-index: 85; pointer-events: none; }
 .bigcall span { font-family: 'Lilita One'; font-size: min(28vw, 220px); color: var(--red); -webkit-text-stroke: 6px var(--ink); text-shadow: 10px 10px 0 var(--ink); animation: bigcall 1.8s cubic-bezier(.3, 1.6, .5, 1) forwards; }
 .bigcall.turn span { color: var(--yellow); font-size: min(14vw, 110px); }
