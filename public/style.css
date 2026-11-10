@@ -1137,3 +1137,19 @@ body.livepile #discardPile .face:last-of-type { box-shadow: 0 0 0 4px var(--yell
 /* a CABO call that didn't pay off */
 .tagc.miss { background: var(--ink); color: #ff8a9c; }
 .cabomiss { color: var(--red); font-weight: 800; }
+
+/* your turn: a small tag over your seat instead of a full-screen banner */
+.turnpill {
+  position: absolute; left: 50%; top: -48px; translate: -50% 0; z-index: 6; pointer-events: none; white-space: nowrap;
+  font-family: 'Lilita One'; font-size: 18px; letter-spacing: .5px; color: var(--ink); background: var(--yellow);
+  border: 3px solid var(--ink); border-radius: 99px; padding: 2px 14px; box-shadow: 3px 3px 0 var(--ink);
+  animation: turnpill 1.6s cubic-bezier(.3, 1.6, .5, 1) both;
+}
+@keyframes turnpill { 0% { transform: translateY(14px) scale(.4); opacity: 0; } 18% { transform: none; opacity: 1; } 80% { transform: none; opacity: 1; } 100% { transform: translateY(-8px); opacity: 0; } }
+
+/* your turn, but the others still have a moment to match: the deck can be tapped already */
+.pile.draw.waiting { cursor: pointer; }
+.pile.draw.waiting .face:last-of-type { box-shadow: 0 0 0 3px rgba(255, 210, 63, .55), 0 0 14px rgba(255, 210, 63, .45); }
+.pile.draw.armed .face:last-of-type { box-shadow: 0 0 0 4px var(--lime), 0 0 26px var(--lime); }
+.pile.draw.armed { animation: armed .5s ease-in-out infinite alternate; }
+@keyframes armed { to { transform: translateY(-4px) scale(1.04); } }

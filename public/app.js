@@ -445,7 +445,7 @@ function renderGame() {
   const t = v.turn || {};
   // reset local selections when the turn step changes
   const tk = `${v.activeId}|${t.step}|${v.phase ? v.phase.id : ''}`;
-  if (tk !== local.turnKey) { local.turnKey = tk; local.sel = null; local.queenSwap = false; cancelHold(); }
+  if (tk !== local.turnKey) { local.turnKey = tk; local.sel = null; local.queenSwap = false; local.wantDraw = false; cancelHold(); }
   // Two clearly different moods: yellow while anyone may match, purple while the drawer uses a power.
   // An open window is always running, so it only makes the top discard glow.
   document.body.classList.toggle('matching', !v.open && !!(v.phase && v.phase.open));
@@ -602,12 +602,15 @@ const tilt = (id) => ([...id].reduce((a, c) => a + c.charCodeAt(0), 0) % 21) - 1
 
 function renderCenter() {
   const v = V;
-  const canDraw = ownTurn() && v.turn && v.turn.step === 'draw' && v.status !== 'GAME_OVER' && !drawLocked();
+  const myDraw = ownTurn() && v.turn && v.turn.step === 'draw' && v.status !== 'GAME_OVER';
+  const canDraw = myDraw && !drawLocked();
   const dp = $('#drawPile');
   setHTML(dp, v.draw > 0 ? '<div class="face back"></div><div class="face back"></div><div class="face back"></div>' : '<div class="face"></div>');
   dp.classList.toggle('empty', v.draw === 0);
   dp.classList.toggle('tapme', !!canDraw);
-  if (canDraw) dp.dataset.do = 'draw'; else delete dp.dataset.do;
+  dp.classList.toggle('waiting', !!myDraw && !canDraw);
+  dp.classList.toggle('armed', !!myDraw && !canDraw && !!local.wantDraw);
+  if (myDraw) dp.dataset.do = 'draw'; else delete dp.dataset.do;
 
   // discard: the last few cards stay visible, stacked with a little tilt
   const rec = v.discardRecent || [];
@@ -669,7 +672,7 @@ function renderActions() {
     if (v.mode === 'FF' && v.phase.matched) h = cap(`${esc(nameOf(v.phase.winnerId))} got it`);
     else if (!me.locked) h = `<div class="matchcall">tap ${/^(A|8)$/.test(v.discardTop.rank) ? 'an' : 'a'} <b>${v.discardTop.rank}</b></div>`;
   } else if (ownTurn()) {
-    if (t.step === 'draw') h = drawLocked() ? cap('Deck opens in a sec…') : cap(t.final ? 'Tap the deck · last turn' : 'Tap the deck');
+    if (t.step === 'draw') h = drawLocked() ? cap(local.wantDraw ? 'Drawing as soon as the deck opens…' : 'Deck opens in a sec… tap it to draw then') : cap(t.final ? 'Tap the deck · last turn' : 'Tap the deck');
     else if (t.step === 'choose') {
       h = cap('Click one of your cards to swap it');
     } else if (t.step === 'power') {
@@ -954,7 +957,10 @@ document.addEventListener('click', (e) => {
     // game
     case 'view': act('view'); break;
     case 'viewReady': act('ready'); break;
-    case 'draw': act('draw'); break;
+    case 'draw':
+      // the others still have a moment to match: remember the tap and draw the instant it opens
+      if (drawLocked()) { local.wantDraw = true; renderGame(); drawWhenOpen(); } else act('draw');
+      break;
     case 'cheat': { const open = !$('#cheat').classList.contains('open'); localStorage.setItem('cabo.cheat', open ? '1' : '0'); localStorage.setItem('cabo.cheatSeen', '1'); $('#cheat').classList.remove('nudge', 'poke'); $('#cheat').classList.toggle('open', open); $('#game').classList.toggle('cheat-open', open); break; }
     case 'cancel': act('cancel'); break;
     case 'swap': if (local.sel) act('swap', local.sel); break;
@@ -1069,6 +1075,25 @@ function floatText(text, el, cls = '') {
   f.style.left = x + 'px'; f.style.top = y + 'px';
   document.body.appendChild(f);
   setTimeout(() => f.remove(), 2000);
+}
+// A deck tap made while it was still shut draws the moment it opens (timed to the opening, not
+// left to the animation loop, which browsers slow down in background tabs).
+function drawWhenOpen() {
+  clearTimeout(local.drawTimer);
+  if (!local.wantDraw || !V || !ownTurn() || !V.turn || V.turn.step !== 'draw') { local.wantDraw = false; return; }
+  if (!drawLocked()) { local.wantDraw = false; act('draw'); return; }
+  local.drawTimer = setTimeout(drawWhenOpen, Math.max(20, V.phase.minUntil - snow() + 20));
+}
+// Your turn: a small tag pops up over your seat. It never covers the deck, so you can draw at once.
+function turnPill() {
+  const st = seats[V.you];
+  if (!st || document.hidden) return;
+  st.el.querySelectorAll('.turnpill').forEach((e) => e.remove());
+  const d = document.createElement('div');
+  d.className = 'turnpill';
+  d.textContent = 'Your turn';
+  st.el.appendChild(d);
+  setTimeout(() => d.remove(), 1600);
 }
 function bigCall(text, cls = '') {
   const d = document.createElement('div');
@@ -1319,7 +1344,7 @@ function runFx(ev) {
   const mine = ev.pid === V.you;
   switch (ev.kind) {
     case 'turn':
-      if (mine) { sfx.turn(); bigCall('YOUR TURN!', 'turn'); }
+      if (mine) { sfx.turn(); turnPill(); }
       break;
     case 'draw':
       sfx.draw();
@@ -1462,6 +1487,7 @@ function frame() {
   const sig = visiblePeeks().length + ':' + visibleReveals().length + ':' + (V.phase && V.phase.open && now < V.phase.deadline ? 1 : 0) +
     ':' + drawLocked() + ':' + !!(V.phase && V.phase.lateUntil && now < V.phase.lateUntil);
   if (sig !== lastSig) { lastSig = sig; renderGame(); }
+  if (local.wantDraw) drawWhenOpen();
   if (V.phase) {
     const rem = Math.max(0, V.phase.deadline - now);
     const secs = Math.ceil(rem / 1000);
