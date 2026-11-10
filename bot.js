@@ -10,14 +10,13 @@ const rand = ([lo, hi]) => lo + Math.random() * (hi - lo);
 //  think/react: delay before acting on its turn / in a matching window (ms)
 //  matchChance: how often it actually grabs a card it knows matches
 //  forget:      chance per own turn of forgetting each remembered card
-//  blunder:     chance per matching window of grabbing a random card (usually wrong)
 //  steal:       will it grab opponents' cards it has spied on?
 //  smart:       aims powers well (spies unknown cards, dumps its worst card with a Jack)
 //  caboAt:      calls CABO when its estimated total is at or below this
 const LEVELS = {
-  easy: { think: [2200, 3600], react: [2400, 4300], matchChance: 0.5, forget: 0.25, blunder: 0.08, steal: false, smart: false, caboAt: 2, caboLate: 16 },
-  medium: { think: [1500, 3000], react: [1200, 2800], matchChance: 0.85, forget: 0, blunder: 0, steal: true, smart: false, caboAt: 6, caboLate: 10 },
-  hard: { think: [900, 1800], react: [450, 1200], matchChance: 1, forget: 0, blunder: 0, steal: true, smart: true, caboAt: 9, caboLate: 7 },
+  easy: { think: [2200, 3600], react: [2400, 4300], matchChance: 0.5, forget: 0.25, steal: false, smart: false, caboAt: 2, caboLate: 16 },
+  medium: { think: [1500, 3000], react: [1200, 2800], matchChance: 0.85, forget: 0, steal: true, smart: false, caboAt: 6, caboLate: 10 },
+  hard: { think: [900, 1800], react: [450, 1200], matchChance: 1, forget: 0, steal: true, smart: true, caboAt: 9, caboLate: 7 },
 };
 
 class Bot {
@@ -31,7 +30,6 @@ class Bot {
     this.timer = null;
     this.turns = 0;
     this.n = 0;
-    this.lastPhase = null;
     this.tried = new Set(); // open window: "phase:slot" matches already decided on
   }
 
@@ -92,13 +90,10 @@ class Bot {
         const key = t && v.phase.id + ':' + t.owner + ':' + t.ver;
         const fresh = !v.open || !this.tried.has(key);
         if (t && fresh) this.tried.add(key);
+        // only ever a card it has actually seen: bots never tap blind
         if (t && fresh && Math.random() < cfg.matchChance) {
           if (this.act({ a: 'match', phaseId: v.phase.id, owner: t.owner, idx: t.idx, ver: t.ver }) && v.open) return this.poke();
-        } else if (!t && this.lastPhase !== v.phase.id && Math.random() < cfg.blunder) {
-          const s = pick(opps); // an overconfident guess
-          if (s) this.act({ a: 'match', phaseId: v.phase.id, owner: s.owner, idx: s.idx, ver: s.ver });
         }
-        this.lastPhase = v.phase.id;
       }
       if (!v.open) return; // a timed window pauses the game; an open one doesn't
     }

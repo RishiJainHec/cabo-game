@@ -279,6 +279,17 @@ const tests = {
     bot.destroy();
     g.destroy();
   },
+  'bots never tap a card they have not seen'() {
+    const g = rig('MD', G4, { open: true, minOpenMs: 0, turnBeatMs: 0, deckTop: ['3D'] });
+    ok(g.handle('a', { a: 'draw' }));
+    ok(g.handle('a', { a: 'swap', ...tgt(g, 'a', 0) })); // an Ace on the pile; Dan has one, unseen
+    const bots = ['c', 'd'].map((id) => new Bot(g, id, 'easy'));
+    for (let i = 0; i < 200; i++) bots.forEach((b) => { b.tried.clear(); b.think(); });
+    assert.ok(sl(g, 'd', 0), 'nobody matched a card they never saw');
+    assert.strictEqual(g.p('c').slots.length + g.p('d').slots.length, 8, 'and nobody took a penalty');
+    bots.forEach((b) => b.destroy());
+    g.destroy();
+  },
   'duplicate action id has no second effect'() {
     const g = rig('MD', G4, { deckTop: ['5D'] });
     ok(g.handle('a', { a: 'draw' }));
