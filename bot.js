@@ -83,7 +83,9 @@ class Bot {
     if (v.phase && v.phase.open && !(v.mode === 'FF' && v.phase.matched)) {
       if (!this.standIn && !this.busy(v)) {
         const ref = v.phase.ref || v.discardTop.rank;
-        const mine = own.find((s) => known(s) && known(s).rank === ref);
+        // Never throw away our own Ace: at −1 it beats having no card at all. (Grabbing someone
+        // else's Ace is still good: they lose the −1 and get our worst card in exchange.)
+        const mine = VALUE[ref] > 0 && own.find((s) => known(s) && known(s).rank === ref);
         const theirs = cfg.steal && opps.find((s) => known(s) && known(s).rank === ref);
         const t = mine ? { ...mine, owner: this.pid } : theirs;
         // open window: think() runs many times per discard, so each chance is decided only once

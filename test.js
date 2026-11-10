@@ -263,6 +263,22 @@ const tests = {
     // out of cards (automatic CABO, total 0) but Dan ends on -1: still a miss
     assert.strictEqual(score([[null, null, null, null], ['5S', '6S', '7S', '8S'], ['9S', '10S', 'JS', 'QS'], ['AH', null, null, null]], 'a').total, 10);
   },
+  'bots never throw away their own Ace, but do grab an opponent\'s'() {
+    const grids = [['AS', '2S', '3S', '4S'], ['5S', '6S', '7S', '8S'], ['AD', '10S', 'JS', 'QS'], ['AH', '2H', '3H', '4H']];
+    const g = rig('MD', grids, { open: true, minOpenMs: 0, turnBeatMs: 0, deckTop: ['3D'] });
+    ok(g.handle('a', { a: 'draw' }));
+    ok(g.handle('a', { a: 'swap', ...tgt(g, 'a', 0) })); // an Ace lands on the pile
+    const bot = new Bot(g, 'd', 'hard');
+    bot.mem.set(sl(g, 'd', 0).ver, sl(g, 'd', 0).card); // Dan knows he holds the AH
+    bot.think();
+    assert.ok(sl(g, 'd', 0), 'kept his own Ace');
+    bot.mem.set(sl(g, 'c', 0).ver, sl(g, 'c', 0).card); // ...and now learns Cat has the AD
+    bot.think();
+    assert.strictEqual(sl(g, 'c', 0), null, "took Cat's Ace");
+    assert.ok(sl(g, 'd', 0), 'still has his own');
+    bot.destroy();
+    g.destroy();
+  },
   'duplicate action id has no second effect'() {
     const g = rig('MD', G4, { deckTop: ['5D'] });
     ok(g.handle('a', { a: 'draw' }));
